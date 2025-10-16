@@ -2,6 +2,9 @@
   "name": "line-bot-vercel",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "build": "echo 'Build completed'"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0"
   }
