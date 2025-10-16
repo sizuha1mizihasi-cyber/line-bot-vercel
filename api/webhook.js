@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // GETリクエストの場合
   if (req.method === 'GET') {
     return res.status(200).json({ message: 'Webhook endpoint is working!' });
@@ -10,4 +10,4 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
-}
+};
