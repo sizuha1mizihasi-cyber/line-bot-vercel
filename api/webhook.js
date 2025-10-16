@@ -1,3 +1,9 @@
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 module.exports = async function handler(req, res) {
   // GETリクエストの場合（検証用）
   if (req.method === 'GET') {
@@ -20,9 +26,16 @@ module.exports = async function handler(req, res) {
       if (event.type === 'message' && event.message.type === 'text') {
         const userMessage = event.message.text;
         const replyToken = event.replyToken;
+        const userId = event.source.userId;
 
-        // Gemini APIを呼び出し
-        const geminiResponse = await callGemini(userMessage);
+        // 会話履歴を取得（最新10件）
+        const conversationHistory = await getConversationHistory(userId, 10);
+
+        // Gemini APIを呼び出し（履歴付き）
+        const geminiResponse = await callGeminiWithHistory(userMessage, conversationHistory);
+
+        // 会話をSupabaseに保存
+        await saveConversation(userId, userMessage, geminiResponse);
 
         // LINE Messaging APIで返信
         await replyToLine(replyToken, geminiResponse);
@@ -40,16 +53,88 @@ module.exports = async function handler(req, res) {
 };
 
 /**
- * Gemini APIを呼び出し
+ * 会話履歴を取得
  */
-async function callGemini(message) {
+async function getConversationHistory(userId, limit = 10) {
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('user_message, assistant_message, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('Error fetching history:', error);
+      return [];
+    }
+
+    // 古い順に並び替え（会話の流れに沿って）
+    return data.reverse();
+  } catch (error) {
+    console.error('Supabase error:', error);
+    return [];
+  }
+}
+
+/**
+ * 会話を保存
+ */
+async function saveConversation(userId, userMessage, assistantMessage) {
+  try {
+    const { error } = await supabase
+      .from('conversations')
+      .insert([
+        {
+          user_id: userId,
+          user_message: userMessage,
+          assistant_message: assistantMessage
+        }
+      ]);
+
+    if (error) {
+      console.error('Error saving conversation:', error);
+    }
+  } catch (error) {
+    console.error('Supabase save error:', error);
+  }
+}
+
+/**
+ * Gemini APIを呼び出し（会話履歴付き）
+ */
+async function callGeminiWithHistory(message, conversationHistory) {
   const apiKey = process.env.GEMINI_API_KEY;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
 
+  // 会話履歴をGemini用のフォーマットに変換
+  const contents = [];
+
+  // 過去の会話を追加
+  conversationHistory.forEach(history => {
+    contents.push({
+      role: 'user',
+      parts: [{ text: history.user_message }]
+    });
+    contents.push({
+      role: 'model',
+      parts: [{ text: history.assistant_message }]
+    });
+  });
+
+  // 現在のメッセージを追加
+  contents.push({
+    role: 'user',
+    parts: [{ text: message }]
+  });
+
   const payload = {
-    contents: [{
-      parts: [{ text: message }]
-    }],
+    contents: contents,
+    systemInstruction: {
+      parts: [{
+        text: 'あなたは親切で丁寧なアシスタントです。過去の会話内容を踏まえて、ユーザーの質問に答えてください。「さっきの」「先ほどの」などの表現があれば、会話履歴を参照して適切に対応してください。'
+      }]
+    },
     generationConfig: {
       temperature: 0.7,
       maxOutputTokens: 1024
