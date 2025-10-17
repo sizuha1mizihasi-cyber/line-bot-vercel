@@ -78,7 +78,7 @@ module.exports = async function handler(req, res) {
           console.error('History fetch error:', historyError);
         }
 
-        // ★ キーワード応答をチェック（文脈考慮版）
+        // ★ キーワード応答をチェック（文脈判定強化版）
         const keywordResponse = await checkKeywordResponse(userMessage, conversationHistory);
         if (keywordResponse) {
           console.log('Keyword match found:', keywordResponse);
@@ -134,7 +134,7 @@ module.exports = async function handler(req, res) {
 };
 
 /**
- * キーワードに一致する応答を検索（文脈考慮版）
+ * キーワードに一致する応答を検索（文脈判定強化版）
  */
 async function checkKeywordResponse(message, conversationHistory) {
   try {
@@ -176,66 +176,103 @@ async function checkKeywordResponse(message, conversationHistory) {
 }
 
 /**
- * 文脈の関連性をチェック
+ * 文脈の関連性をチェック（強化版）
  */
 async function checkContextRelevance(message, keyword) {
-  // 否定的な文脈を示す単語
-  const negativePatterns = [
-    '違い',
-    'じゃなくて',
-    'ではなく',
-    'ではない',
-    '以外',
-    'ではありません',
-    'とは違う',
-    'じゃない',
-    'でない',
-    '別の',
-    '他の'
+  // 明確に否定している表現（即座に反応しない）
+  const strongNegativePatterns = [
+    `${keyword}じゃなくて`,
+    `${keyword}ではなく`,
+    `${keyword}じゃない`,
+    `${keyword}ではない`,
+    `${keyword}以外`,
+    `${keyword}を取りたくない`,
+    `${keyword}したくない`,
+    `${keyword}は不要`,
+    `${keyword}はいらない`,
+    `${keyword}は嫌`,
+    `${keyword}やめ`
   ];
   
-  // 否定的な単語が含まれているかチェック
-  const hasNegativeContext = negativePatterns.some(pattern => message.includes(pattern));
+  // 強い否定表現があれば即座に反応しない
+  for (const pattern of strongNegativePatterns) {
+    if (message.includes(pattern)) {
+      console.log(`Strong negative pattern found: "${pattern}"`);
+      return false;
+    }
+  }
   
-  if (hasNegativeContext) {
-    console.log('Negative context detected, checking with Gemini...');
-    // Geminiで詳細判定
+  // 比較・質問の表現
+  const comparisonPatterns = [
+    '違い',
+    'どっち',
+    'どちら',
+    'vs',
+    'VS',
+    '比較',
+    'どう違う',
+    '何が違う'
+  ];
+  
+  // 比較表現がある場合はGeminiで判定
+  const hasComparison = comparisonPatterns.some(pattern => message.includes(pattern));
+  
+  if (hasComparison) {
+    console.log('Comparison pattern detected, checking with Gemini...');
     return await checkWithGemini(message, keyword);
   }
   
-  // 否定的な文脈がなければ反応する
+  // それ以外は反応する
   return true;
 }
 
 /**
- * Geminiで文脈判定
+ * Geminiで文脈判定（強化版）
  */
 async function checkWithGemini(message, keyword) {
   const apiKey = process.env.GEMINI_API_KEY;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
 
-  const prompt = `以下のメッセージは「${keyword}」に関する情報を求めていますか？それとも単に言及しているだけですか？
+  const prompt = `あなたは文脈判定AIです。以下のメッセージを分析してください。
 
-メッセージ: "${message}"
+【メッセージ】
+"${message}"
 
-「${keyword}」に関する情報（予約方法、詳細、申し込み方法など）を求めている場合は「はい」、
-単に言及しているだけ（比較、否定、質問の一部など）の場合は「いいえ」と答えてください。
+【キーワード】
+"${keyword}"
 
-答え:`;
+【質問】
+このユーザーは「${keyword}」に関する具体的な情報（申し込み方法、URL、手続き、予約方法など）を求めていますか？
+
+【判定基準】
+以下の場合は「いいえ」：
+- 他のものとの違いや比較を質問している
+- 「〜とは何ですか」という定義を聞いている
+- 否定的な文脈（〜じゃない、〜以外、など）
+- 単に言及しているだけ
+
+以下の場合は「はい」：
+- 申し込みたい、予約したい
+- URLが欲しい
+- 手続き方法を知りたい
+- 具体的なアクションを求めている
+
+【回答】
+「はい」または「いいえ」のみで答えてください。理由は不要です。`;
 
   const payload = {
     contents: [{
       parts: [{ text: prompt }]
     }],
     generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 20
+      temperature: 0.0,
+      maxOutputTokens: 10
     }
   };
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -247,19 +284,27 @@ async function checkWithGemini(message, keyword) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error('Gemini context check failed');
-      return true; // エラー時は反応する
+      console.error('Gemini context check failed:', response.status);
+      return false; // エラー時は反応しない
     }
 
     const data = await response.json();
+    
+    if (!data.candidates || !data.candidates[0]) {
+      console.error('No candidates in Gemini response');
+      return false;
+    }
+    
     const answer = data.candidates[0].content.parts[0].text.trim().toLowerCase();
     
-    console.log(`Gemini context check result: ${answer}`);
+    console.log(`Gemini context check result: "${answer}"`);
     
-    return answer.includes('はい') || answer.includes('yes');
+    const isRelevant = answer.includes('はい') || answer.includes('yes');
+    return isRelevant;
+    
   } catch (error) {
     console.error('Context check error:', error);
-    return true; // エラー時は反応する
+    return false; // エラー時は反応しない
   }
 }
 
