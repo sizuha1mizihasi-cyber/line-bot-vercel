@@ -187,6 +187,7 @@ async function checkContextRelevance(message, keyword) {
     `${keyword}ではない`,
     `${keyword}以外`,
     `${keyword}を取りたくない`,
+    `${keyword}は取らなくていい`,
     `${keyword}したくない`,
     `${keyword}は不要`,
     `${keyword}はいらない`,
