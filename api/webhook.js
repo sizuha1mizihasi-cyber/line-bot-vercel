@@ -191,7 +191,15 @@ async function checkContextRelevance(message, keyword) {
     `${keyword}は不要`,
     `${keyword}はいらない`,
     `${keyword}は嫌`,
-    `${keyword}やめ`
+    `${keyword}やめ`,
+    `${keyword}はやだ`,
+    `${keyword}やだ`,
+    `${keyword}はダメ`,
+    `${keyword}ダメ`,
+    `${keyword}は結構`,
+    `${keyword}結構です`,
+    `${keyword}は大丈夫`,
+    `${keyword}大丈夫です`
   ];
   
   // 強い否定表現があれば即座に反応しない
