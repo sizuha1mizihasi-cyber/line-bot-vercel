@@ -181,13 +181,12 @@ async function checkKeywordResponse(message, conversationHistory) {
 async function checkContextRelevance(message, keyword) {
   // 明確に否定している表現（即座に反応しない）
   const strongNegativePatterns = [
-    `${keyword}じゃなくて`,
+  　 `${keyword}じゃなくて`,
     `${keyword}ではなく`,
     `${keyword}じゃない`,
     `${keyword}ではない`,
     `${keyword}以外`,
     `${keyword}を取りたくない`,
-    `${keyword}は取らなくていい`,
     `${keyword}したくない`,
     `${keyword}は不要`,
     `${keyword}はいらない`,
@@ -200,7 +199,9 @@ async function checkContextRelevance(message, keyword) {
     `${keyword}は結構`,
     `${keyword}結構です`,
     `${keyword}は大丈夫`,
-    `${keyword}大丈夫です`
+    `${keyword}大丈夫です`,
+    `${keyword}取らなくていい`,
+    `${keyword}を取らなくていい`
   ];
   
   // 強い否定表現があれば即座に反応しない
