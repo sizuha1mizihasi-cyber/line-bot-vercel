@@ -67,21 +67,9 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ message: 'OK' });
         }
 
-        // ★ キーワード応答をチェック
-        const keywordResponse = await checkKeywordResponse(userMessage);
-        if (keywordResponse) {
-          console.log('Keyword match found:', keywordResponse);
-          await replyToLine(replyToken, keywordResponse);
-          return res.status(200).json({ message: 'OK' });
-        }
-
-        // ユーザーのモード設定を取得
+        // 会話履歴を取得
         const userMode = await getUserMode(userId);
         const config = getModeConfig(userMode);
-
-        console.log('User mode:', userMode);
-
-        // 会話履歴を取得（モードに応じた件数）
         let conversationHistory = [];
         try {
           conversationHistory = await getConversationHistory(userId, config.historyLimit);
@@ -89,6 +77,18 @@ module.exports = async function handler(req, res) {
         } catch (historyError) {
           console.error('History fetch error:', historyError);
         }
+
+        // ★ キーワード応答をチェック（文脈考慮版）
+        const keywordResponse = await checkKeywordResponse(userMessage, conversationHistory);
+        if (keywordResponse) {
+          console.log('Keyword match found:', keywordResponse);
+          await replyToLine(replyToken, keywordResponse);
+          // キーワード応答も履歴に保存
+          await saveConversation(userId, userMessage, keywordResponse);
+          return res.status(200).json({ message: 'OK' });
+        }
+
+        console.log('User mode:', userMode);
 
         // Gemini APIを呼び出し（モードに応じた設定）
         let geminiResponse;
@@ -134,9 +134,9 @@ module.exports = async function handler(req, res) {
 };
 
 /**
- * キーワードに一致する応答を検索
+ * キーワードに一致する応答を検索（文脈考慮版）
  */
-async function checkKeywordResponse(message) {
+async function checkKeywordResponse(message, conversationHistory) {
   try {
     const { data, error } = await supabase
       .from('keyword_responses')
@@ -144,19 +144,27 @@ async function checkKeywordResponse(message) {
       .eq('is_active', true)
       .order('priority', { ascending: false });
 
-    if (error || !data) {
+    if (error || !data || data.length === 0) {
       return null;
     }
 
-    // メッセージにキーワードが含まれているか確認
+    // キーワードが含まれるものをチェック
     for (const item of data) {
       if (message.includes(item.keyword)) {
-        // URLがある場合は追加
-        let responseText = item.response_text;
-        if (item.url) {
-          responseText += '\n' + item.url;
+        console.log(`Keyword "${item.keyword}" found in message`);
+        
+        // 文脈の関連性をチェック
+        const isRelevant = await checkContextRelevance(message, item.keyword);
+        
+        console.log(`Context relevance for "${item.keyword}": ${isRelevant}`);
+        
+        if (isRelevant) {
+          let responseText = item.response_text;
+          if (item.url) {
+            responseText += '\n' + item.url;
+          }
+          return responseText;
         }
-        return responseText;
       }
     }
 
@@ -164,6 +172,94 @@ async function checkKeywordResponse(message) {
   } catch (error) {
     console.error('Keyword check error:', error);
     return null;
+  }
+}
+
+/**
+ * 文脈の関連性をチェック
+ */
+async function checkContextRelevance(message, keyword) {
+  // 否定的な文脈を示す単語
+  const negativePatterns = [
+    '違い',
+    'じゃなくて',
+    'ではなく',
+    'ではない',
+    '以外',
+    'ではありません',
+    'とは違う',
+    'じゃない',
+    'でない',
+    '別の',
+    '他の'
+  ];
+  
+  // 否定的な単語が含まれているかチェック
+  const hasNegativeContext = negativePatterns.some(pattern => message.includes(pattern));
+  
+  if (hasNegativeContext) {
+    console.log('Negative context detected, checking with Gemini...');
+    // Geminiで詳細判定
+    return await checkWithGemini(message, keyword);
+  }
+  
+  // 否定的な文脈がなければ反応する
+  return true;
+}
+
+/**
+ * Geminiで文脈判定
+ */
+async function checkWithGemini(message, keyword) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+
+  const prompt = `以下のメッセージは「${keyword}」に関する情報を求めていますか？それとも単に言及しているだけですか？
+
+メッセージ: "${message}"
+
+「${keyword}」に関する情報（予約方法、詳細、申し込み方法など）を求めている場合は「はい」、
+単に言及しているだけ（比較、否定、質問の一部など）の場合は「いいえ」と答えてください。
+
+答え:`;
+
+  const payload = {
+    contents: [{
+      parts: [{ text: prompt }]
+    }],
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 20
+    }
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error('Gemini context check failed');
+      return true; // エラー時は反応する
+    }
+
+    const data = await response.json();
+    const answer = data.candidates[0].content.parts[0].text.trim().toLowerCase();
+    
+    console.log(`Gemini context check result: ${answer}`);
+    
+    return answer.includes('はい') || answer.includes('yes');
+  } catch (error) {
+    console.error('Context check error:', error);
+    return true; // エラー時は反応する
   }
 }
 
