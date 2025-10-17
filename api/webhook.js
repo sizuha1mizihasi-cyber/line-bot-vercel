@@ -67,6 +67,14 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ message: 'OK' });
         }
 
+        // ★ キーワード応答をチェック
+        const keywordResponse = await checkKeywordResponse(userMessage);
+        if (keywordResponse) {
+          console.log('Keyword match found:', keywordResponse);
+          await replyToLine(replyToken, keywordResponse);
+          return res.status(200).json({ message: 'OK' });
+        }
+
         // ユーザーのモード設定を取得
         const userMode = await getUserMode(userId);
         const config = getModeConfig(userMode);
@@ -126,6 +134,40 @@ module.exports = async function handler(req, res) {
 };
 
 /**
+ * キーワードに一致する応答を検索
+ */
+async function checkKeywordResponse(message) {
+  try {
+    const { data, error } = await supabase
+      .from('keyword_responses')
+      .select('*')
+      .eq('is_active', true)
+      .order('priority', { ascending: false });
+
+    if (error || !data) {
+      return null;
+    }
+
+    // メッセージにキーワードが含まれているか確認
+    for (const item of data) {
+      if (message.includes(item.keyword)) {
+        // URLがある場合は追加
+        let responseText = item.response_text;
+        if (item.url) {
+          responseText += '\n' + item.url;
+        }
+        return responseText;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Keyword check error:', error);
+    return null;
+  }
+}
+
+/**
  * ユーザーのモード設定を取得
  */
 async function getUserMode(userId) {
@@ -137,7 +179,6 @@ async function getUserMode(userId) {
       .single();
 
     if (error || !data) {
-      // デフォルトはバランスモード
       return 'balanced';
     }
 
@@ -219,7 +260,6 @@ async function getConversationHistory(userId, limit = 8) {
     throw error;
   }
 
-  // 古い順に並び替え
   return (data || []).reverse();
 }
 
@@ -250,7 +290,6 @@ async function callGeminiWithHistory(message, conversationHistory, config) {
   const apiKey = process.env.GEMINI_API_KEY;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
 
-  // 会話履歴をGemini用のフォーマットに変換
   const contents = [];
 
   conversationHistory.forEach(history => {
