@@ -1,22 +1,10 @@
 const { createClient } = require('@supabase/supabase-js');
-const { google } = require('googleapis');
 
 // Supabase初期化
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
-
-// Google Drive初期化
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_DRIVE_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_DRIVE_PRIVATE_KEY.replace(/\\n/g, '\n')
-  },
-  scopes: ['https://www.googleapis.com/auth/drive']
-});
-
-const drive = google.drive({ version: 'v3', auth });
 
 module.exports = async function handler(req, res) {
   // GETリクエストの場合（検証用）
@@ -52,8 +40,8 @@ module.exports = async function handler(req, res) {
           const fileExtension = getFileExtension(event.message);
           const fileName = `${timestamp}_${messageId}.${fileExtension}`;
 
-          // Google Driveにアップロード
-          const driveFile = await uploadToDrive(userId, fileName, fileBuffer, event.message.type);
+          // Supabase Storageにアップロード
+          const storagePath = await uploadToSupabase(userId, fileName, fileBuffer, event.message.type);
 
           // Geminiでファイル分析（画像の場合）
           let analysis = null;
@@ -62,13 +50,13 @@ module.exports = async function handler(req, res) {
           }
 
           // メタデータをSupabaseに保存
-          await saveFileMetadata(userId, fileName, event.message, driveFile, analysis);
+          await saveFileMetadata(userId, fileName, event.message, storagePath, analysis);
 
           // ユーザーに通知
           await replyToLine(replyToken, 
             `ファイルを保存しました！\n` +
             `ファイル名: ${fileName}\n` +
-            `保存先: Google Drive\n` +
+            `保存先: Supabase Storage\n` +
             (analysis ? `\n分析結果:\n${analysis}` : '')
           );
 
@@ -227,107 +215,28 @@ function getFileExtension(message) {
 }
 
 /**
- * 共有フォルダを検索
+ * Supabase Storageにアップロード
  */
-async function findSharedFolder(folderName) {
-  try {
-    console.log(`Searching for shared folder: ${folderName}`);
-    
-    const response = await drive.files.list({
-      q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      fields: 'files(id, name, owners)',
-      spaces: 'drive',
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true
+async function uploadToSupabase(userId, fileName, fileBuffer, fileType) {
+  const storagePath = `${userId}/${fileName}`;
+
+  console.log(`Uploading to Supabase Storage: ${storagePath}`);
+
+  const { data, error } = await supabase.storage
+    .from('user-files')
+    .upload(storagePath, fileBuffer, {
+      contentType: fileType === 'image' ? 'image/jpeg' : 'application/octet-stream',
+      upsert: false
     });
 
-    if (response.data.files && response.data.files.length > 0) {
-      console.log(`Found shared folder: ${response.data.files[0].id}`);
-      return response.data.files[0].id;
-    }
-
-    // 見つからない場合は環境変数のIDを使う
-    console.log('Shared folder not found, using env var');
-    return process.env.GOOGLE_DRIVE_FOLDER_ID;
-  } catch (error) {
-    console.error('Error finding shared folder:', error);
-    return process.env.GOOGLE_DRIVE_FOLDER_ID;
-  }
-}
-
-/**
- * Google Driveにアップロード
- */
-async function uploadToDrive(userId, fileName, fileBuffer, fileType) {
-  // 共有フォルダを検索
-  const rootFolderId = await findSharedFolder('LINE Bot Files');
-
-  // ユーザー専用フォルダを取得または作成
-  const userFolderId = await getOrCreateUserFolder(userId, rootFolderId);
-
-  // ファイルをアップロード
-  const fileMetadata = {
-    name: fileName,
-    parents: [userFolderId]
-  };
-
-  const media = {
-    mimeType: fileType === 'image' ? 'image/jpeg' : 'application/octet-stream',
-    body: require('stream').Readable.from(fileBuffer)
-  };
-
-  console.log(`Uploading file to folder: ${userFolderId}`);
-
-  const file = await drive.files.create({
-    requestBody: fileMetadata,
-    media: media,
-    fields: 'id, webViewLink',
-    supportsAllDrives: true
-  });
-
-  console.log(`File uploaded successfully: ${file.data.id}`);
-
-  return file.data;
-}
-
-/**
- * ユーザー専用フォルダを取得または作成
- */
-async function getOrCreateUserFolder(userId, parentFolderId) {
-  // 既存フォルダを検索
-  console.log(`Searching for user folder: ${userId} in parent: ${parentFolderId}`);
-  
-  const response = await drive.files.list({
-    q: `name='${userId}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: 'files(id, name)',
-    spaces: 'drive',
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true
-  });
-
-  if (response.data.files && response.data.files.length > 0) {
-    console.log(`User folder found: ${response.data.files[0].id}`);
-    return response.data.files[0].id;
+  if (error) {
+    console.error('Supabase upload error:', error);
+    throw error;
   }
 
-  // フォルダが存在しない場合は作成
-  console.log(`Creating user folder: ${userId}`);
-  
-  const fileMetadata = {
-    name: userId,
-    mimeType: 'application/vnd.google-apps.folder',
-    parents: [parentFolderId]
-  };
+  console.log(`File uploaded successfully: ${storagePath}`);
 
-  const folder = await drive.files.create({
-    requestBody: fileMetadata,
-    fields: 'id',
-    supportsAllDrives: true
-  });
-
-  console.log(`User folder created: ${folder.data.id}`);
-
-  return folder.data.id;
+  return storagePath;
 }
 
 /**
@@ -385,7 +294,12 @@ async function analyzeImageWithGemini(imageBuffer) {
 /**
  * ファイルメタデータをSupabaseに保存
  */
-async function saveFileMetadata(userId, fileName, message, driveFile, analysis) {
+async function saveFileMetadata(userId, fileName, message, storagePath, analysis) {
+  // ファイルの公開URLを取得
+  const { data: urlData } = supabase.storage
+    .from('user-files')
+    .getPublicUrl(storagePath);
+
   const { error } = await supabase
     .from('user_files')
     .insert([
@@ -395,9 +309,9 @@ async function saveFileMetadata(userId, fileName, message, driveFile, analysis) 
         original_file_name: message.fileName || fileName,
         file_type: message.type,
         file_size: message.fileSize || 0,
-        drive_file_id: driveFile.id,
-        drive_web_link: driveFile.webViewLink,
-        drive_folder_path: `/${userId}/${fileName}`,
+        storage_location: 'supabase',
+        storage_path: storagePath,
+        storage_url: urlData.publicUrl,
         gemini_analysis: analysis
       }
     ]);
