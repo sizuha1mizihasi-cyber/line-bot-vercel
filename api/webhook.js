@@ -1,10 +1,22 @@
 const { createClient } = require('@supabase/supabase-js');
+const { google } = require('googleapis');
 
 // Supabase初期化
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
+
+// Google Drive初期化
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    client_email: process.env.GOOGLE_DRIVE_CLIENT_EMAIL,
+    private_key: process.env.GOOGLE_DRIVE_PRIVATE_KEY.replace(/\\n/g, '\n')
+  },
+  scopes: ['https://www.googleapis.com/auth/drive.file']
+});
+
+const drive = google.drive({ version: 'v3', auth });
 
 module.exports = async function handler(req, res) {
   // GETリクエストの場合（検証用）
@@ -23,6 +35,53 @@ module.exports = async function handler(req, res) {
 
       const event = events[0];
 
+      // ★ ファイルメッセージの処理
+      if (event.type === 'message' && (event.message.type === 'image' || event.message.type === 'file')) {
+        const replyToken = event.replyToken;
+        const userId = event.source.userId;
+        const messageId = event.message.id;
+
+        console.log('File message received:', event.message.type);
+
+        try {
+          // LINEからファイルをダウンロード
+          const fileBuffer = await downloadLineFile(messageId);
+          
+          // ファイル名を生成
+          const timestamp = new Date().toISOString().split('T')[0];
+          const fileExtension = getFileExtension(event.message);
+          const fileName = `${timestamp}_${messageId}.${fileExtension}`;
+
+          // Google Driveにアップロード
+          const driveFile = await uploadToDrive(userId, fileName, fileBuffer, event.message.type);
+
+          // Geminiでファイル分析（画像の場合）
+          let analysis = null;
+          if (event.message.type === 'image') {
+            analysis = await analyzeImageWithGemini(fileBuffer);
+          }
+
+          // メタデータをSupabaseに保存
+          await saveFileMetadata(userId, fileName, event.message, driveFile, analysis);
+
+          // ユーザーに通知
+          await replyToLine(replyToken, 
+            `ファイルを保存しました！\n` +
+            `ファイル名: ${fileName}\n` +
+            `保存先: Google Drive\n` +
+            (analysis ? `\n分析結果:\n${analysis}` : '')
+          );
+
+          return res.status(200).json({ message: 'OK' });
+
+        } catch (fileError) {
+          console.error('File processing error:', fileError);
+          await replyToLine(replyToken, 'ファイルの保存中にエラーが発生しました。');
+          return res.status(200).json({ message: 'Error handled' });
+        }
+      }
+
+      // ★ テキストメッセージの処理
       if (event.type === 'message' && event.message.type === 'text') {
         const userMessage = event.message.text;
         const replyToken = event.replyToken;
@@ -78,19 +137,18 @@ module.exports = async function handler(req, res) {
           console.error('History fetch error:', historyError);
         }
 
-        // ★ キーワード応答をチェック（文脈判定強化版）
+        // キーワード応答をチェック
         const keywordResponse = await checkKeywordResponse(userMessage, conversationHistory);
         if (keywordResponse) {
           console.log('Keyword match found:', keywordResponse);
           await replyToLine(replyToken, keywordResponse);
-          // キーワード応答も履歴に保存
           await saveConversation(userId, userMessage, keywordResponse);
           return res.status(200).json({ message: 'OK' });
         }
 
         console.log('User mode:', userMode);
 
-        // Gemini APIを呼び出し（モードに応じた設定）
+        // Gemini APIを呼び出し
         let geminiResponse;
         try {
           geminiResponse = await callGeminiWithHistory(
@@ -134,7 +192,179 @@ module.exports = async function handler(req, res) {
 };
 
 /**
- * キーワードに一致する応答を検索（文脈判定強化版）
+ * LINEからファイルをダウンロード
+ */
+async function downloadLineFile(messageId) {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const url = `https://api-data.line.me/v2/bot/message/${messageId}/content`;
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download file: ${response.status}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+/**
+ * ファイル拡張子を取得
+ */
+function getFileExtension(message) {
+  if (message.type === 'image') {
+    return 'jpg';
+  }
+  if (message.type === 'file' && message.fileName) {
+    const parts = message.fileName.split('.');
+    return parts[parts.length - 1];
+  }
+  return 'bin';
+}
+
+/**
+ * Google Driveにアップロード
+ */
+async function uploadToDrive(userId, fileName, fileBuffer, fileType) {
+  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+  // ユーザー専用フォルダを取得または作成
+  const userFolderId = await getOrCreateUserFolder(userId, folderId);
+
+  // ファイルをアップロード
+  const fileMetadata = {
+    name: fileName,
+    parents: [userFolderId]
+  };
+
+  const media = {
+    mimeType: fileType === 'image' ? 'image/jpeg' : 'application/octet-stream',
+    body: require('stream').Readable.from(fileBuffer)
+  };
+
+  const file = await drive.files.create({
+    requestBody: fileMetadata,
+    media: media,
+    fields: 'id, webViewLink'
+  });
+
+  return file.data;
+}
+
+/**
+ * ユーザー専用フォルダを取得または作成
+ */
+async function getOrCreateUserFolder(userId, parentFolderId) {
+  // 既存フォルダを検索
+  const response = await drive.files.list({
+    q: `name='${userId}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: 'files(id, name)',
+    spaces: 'drive'
+  });
+
+  if (response.data.files && response.data.files.length > 0) {
+    return response.data.files[0].id;
+  }
+
+  // フォルダが存在しない場合は作成
+  const fileMetadata = {
+    name: userId,
+    mimeType: 'application/vnd.google-apps.folder',
+    parents: [parentFolderId]
+  };
+
+  const folder = await drive.files.create({
+    requestBody: fileMetadata,
+    fields: 'id'
+  });
+
+  return folder.data.id;
+}
+
+/**
+ * Geminiで画像分析
+ */
+async function analyzeImageWithGemini(imageBuffer) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+
+  const base64Image = imageBuffer.toString('base64');
+
+  const payload = {
+    contents: [{
+      parts: [
+        { text: "この画像の内容を簡潔に説明してください。" },
+        {
+          inline_data: {
+            mime_type: "image/jpeg",
+            data: base64Image
+          }
+        }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 200
+    }
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      console.error('Gemini image analysis failed:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (data.candidates && data.candidates[0]) {
+      return data.candidates[0].content.parts[0].text;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Image analysis error:', error);
+    return null;
+  }
+}
+
+/**
+ * ファイルメタデータをSupabaseに保存
+ */
+async function saveFileMetadata(userId, fileName, message, driveFile, analysis) {
+  const { error } = await supabase
+    .from('user_files')
+    .insert([
+      {
+        user_id: userId,
+        file_name: fileName,
+        original_file_name: message.fileName || fileName,
+        file_type: message.type,
+        file_size: message.fileSize || 0,
+        drive_file_id: driveFile.id,
+        drive_web_link: driveFile.webViewLink,
+        drive_folder_path: `/${userId}/${fileName}`,
+        gemini_analysis: analysis
+      }
+    ]);
+
+  if (error) {
+    console.error('File metadata save error:', error);
+    throw error;
+  }
+}
+
+/**
+ * キーワードに一致する応答を検索
  */
 async function checkKeywordResponse(message, conversationHistory) {
   try {
@@ -148,12 +378,10 @@ async function checkKeywordResponse(message, conversationHistory) {
       return null;
     }
 
-    // キーワードが含まれるものをチェック
     for (const item of data) {
       if (message.includes(item.keyword)) {
         console.log(`Keyword "${item.keyword}" found in message`);
         
-        // 文脈の関連性をチェック
         const isRelevant = await checkContextRelevance(message, item.keyword);
         
         console.log(`Context relevance for "${item.keyword}": ${isRelevant}`);
@@ -176,12 +404,11 @@ async function checkKeywordResponse(message, conversationHistory) {
 }
 
 /**
- * 文脈の関連性をチェック（強化版）
+ * 文脈の関連性をチェック
  */
 async function checkContextRelevance(message, keyword) {
-  // 明確に否定している表現（即座に反応しない）
   const strongNegativePatterns = [
-  　 `${keyword}じゃなくて`,
+    `${keyword}じゃなくて`,
     `${keyword}ではなく`,
     `${keyword}じゃない`,
     `${keyword}ではない`,
@@ -204,7 +431,6 @@ async function checkContextRelevance(message, keyword) {
     `${keyword}を取らなくていい`
   ];
   
-  // 強い否定表現があれば即座に反応しない
   for (const pattern of strongNegativePatterns) {
     if (message.includes(pattern)) {
       console.log(`Strong negative pattern found: "${pattern}"`);
@@ -212,7 +438,6 @@ async function checkContextRelevance(message, keyword) {
     }
   }
   
-  // 比較・質問の表現
   const comparisonPatterns = [
     '違い',
     'どっち',
@@ -224,7 +449,6 @@ async function checkContextRelevance(message, keyword) {
     '何が違う'
   ];
   
-  // 比較表現がある場合はGeminiで判定
   const hasComparison = comparisonPatterns.some(pattern => message.includes(pattern));
   
   if (hasComparison) {
@@ -232,12 +456,11 @@ async function checkContextRelevance(message, keyword) {
     return await checkWithGemini(message, keyword);
   }
   
-  // それ以外は反応する
   return true;
 }
 
 /**
- * Geminiで文脈判定（強化版）
+ * Geminiで文脈判定
  */
 async function checkWithGemini(message, keyword) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -295,7 +518,7 @@ async function checkWithGemini(message, keyword) {
 
     if (!response.ok) {
       console.error('Gemini context check failed:', response.status);
-      return false; // エラー時は反応しない
+      return false;
     }
 
     const data = await response.json();
@@ -314,7 +537,7 @@ async function checkWithGemini(message, keyword) {
     
   } catch (error) {
     console.error('Context check error:', error);
-    return false; // エラー時は反応しない
+    return false;
   }
 }
 
