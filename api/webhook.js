@@ -249,7 +249,8 @@ async function uploadToDrive(userId, fileName, fileBuffer, fileType) {
   const file = await drive.files.create({
     requestBody: fileMetadata,
     media: media,
-    fields: 'id, webViewLink'
+    fields: 'id, webViewLink',
+    supportsAllDrives: true
   });
 
   return file.data;
@@ -263,7 +264,9 @@ async function getOrCreateUserFolder(userId, parentFolderId) {
   const response = await drive.files.list({
     q: `name='${userId}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id, name)',
-    spaces: 'drive'
+    spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
   });
 
   if (response.data.files && response.data.files.length > 0) {
@@ -279,7 +282,8 @@ async function getOrCreateUserFolder(userId, parentFolderId) {
 
   const folder = await drive.files.create({
     requestBody: fileMetadata,
-    fields: 'id'
+    fields: 'id',
+    supportsAllDrives: true
   });
 
   return folder.data.id;
