@@ -251,7 +251,7 @@ async function analyzeImageWithGemini(imageBuffer) {
   const payload = {
     contents: [{
       parts: [
-        { text: "この画像の内容を簡潔に説明してください。" },
+        { text: "この画像の内容を日本語で簡潔に説明してください。" },  // ← ここを変更
         {
           inline_data: {
             mime_type: "image/jpeg",
@@ -290,6 +290,7 @@ async function analyzeImageWithGemini(imageBuffer) {
     return null;
   }
 }
+
 
 /**
  * ファイルメタデータをSupabaseに保存
