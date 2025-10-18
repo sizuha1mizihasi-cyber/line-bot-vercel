@@ -1,7 +1,6 @@
 {
-  "name": "line-bot-vercel",
-  "version": "1.0.0",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.39.0",
+    "googleapis": "^128.0.0"
   }
 }
