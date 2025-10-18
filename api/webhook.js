@@ -13,7 +13,7 @@ const auth = new google.auth.GoogleAuth({
     client_email: process.env.GOOGLE_DRIVE_CLIENT_EMAIL,
     private_key: process.env.GOOGLE_DRIVE_PRIVATE_KEY.replace(/\\n/g, '\n')
   },
-  scopes: ['https://www.googleapis.com/auth/drive.file']
+  scopes: ['https://www.googleapis.com/auth/drive']
 });
 
 const drive = google.drive({ version: 'v3', auth });
@@ -227,13 +227,43 @@ function getFileExtension(message) {
 }
 
 /**
+ * 共有フォルダを検索
+ */
+async function findSharedFolder(folderName) {
+  try {
+    console.log(`Searching for shared folder: ${folderName}`);
+    
+    const response = await drive.files.list({
+      q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id, name, owners)',
+      spaces: 'drive',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
+
+    if (response.data.files && response.data.files.length > 0) {
+      console.log(`Found shared folder: ${response.data.files[0].id}`);
+      return response.data.files[0].id;
+    }
+
+    // 見つからない場合は環境変数のIDを使う
+    console.log('Shared folder not found, using env var');
+    return process.env.GOOGLE_DRIVE_FOLDER_ID;
+  } catch (error) {
+    console.error('Error finding shared folder:', error);
+    return process.env.GOOGLE_DRIVE_FOLDER_ID;
+  }
+}
+
+/**
  * Google Driveにアップロード
  */
 async function uploadToDrive(userId, fileName, fileBuffer, fileType) {
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  // 共有フォルダを検索
+  const rootFolderId = await findSharedFolder('LINE Bot Files');
 
   // ユーザー専用フォルダを取得または作成
-  const userFolderId = await getOrCreateUserFolder(userId, folderId);
+  const userFolderId = await getOrCreateUserFolder(userId, rootFolderId);
 
   // ファイルをアップロード
   const fileMetadata = {
@@ -246,12 +276,16 @@ async function uploadToDrive(userId, fileName, fileBuffer, fileType) {
     body: require('stream').Readable.from(fileBuffer)
   };
 
+  console.log(`Uploading file to folder: ${userFolderId}`);
+
   const file = await drive.files.create({
     requestBody: fileMetadata,
     media: media,
     fields: 'id, webViewLink',
     supportsAllDrives: true
   });
+
+  console.log(`File uploaded successfully: ${file.data.id}`);
 
   return file.data;
 }
@@ -261,6 +295,8 @@ async function uploadToDrive(userId, fileName, fileBuffer, fileType) {
  */
 async function getOrCreateUserFolder(userId, parentFolderId) {
   // 既存フォルダを検索
+  console.log(`Searching for user folder: ${userId} in parent: ${parentFolderId}`);
+  
   const response = await drive.files.list({
     q: `name='${userId}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id, name)',
@@ -270,10 +306,13 @@ async function getOrCreateUserFolder(userId, parentFolderId) {
   });
 
   if (response.data.files && response.data.files.length > 0) {
+    console.log(`User folder found: ${response.data.files[0].id}`);
     return response.data.files[0].id;
   }
 
   // フォルダが存在しない場合は作成
+  console.log(`Creating user folder: ${userId}`);
+  
   const fileMetadata = {
     name: userId,
     mimeType: 'application/vnd.google-apps.folder',
@@ -285,6 +324,8 @@ async function getOrCreateUserFolder(userId, parentFolderId) {
     fields: 'id',
     supportsAllDrives: true
   });
+
+  console.log(`User folder created: ${folder.data.id}`);
 
   return folder.data.id;
 }
