@@ -43,22 +43,25 @@ module.exports = async function handler(req, res) {
           // Supabase Storageにアップロード
           const storagePath = await uploadToSupabase(userId, fileName, fileBuffer, event.message.type);
 
-          // Geminiでファイル分析（画像の場合）
+          // Geminiでファイル分析（画像またはPDFの場合）
           let analysis = null;
           if (event.message.type === 'image') {
-            analysis = await analyzeImageWithGemini(fileBuffer);
+            analysis = await analyzeFileWithGemini(fileBuffer, 'image/jpeg', 'image');
+          } else if (event.message.type === 'file' && fileExtension === 'pdf') {
+            analysis = await analyzeFileWithGemini(fileBuffer, 'application/pdf', 'pdf');
           }
 
           // メタデータをSupabaseに保存
           await saveFileMetadata(userId, fileName, event.message, storagePath, analysis);
 
           // ユーザーに通知
-          await replyToLine(replyToken, 
-            `ファイルを保存しました！\n` +
-            `ファイル名: ${fileName}\n` +
-            `保存先: Supabase Storage\n` +
-            (analysis ? `\n分析結果:\n${analysis}` : '')
-          );
+          let notificationMessage = `ファイルを保存しました！\nファイル名: ${fileName}\n保存先: Supabase Storage`;
+          
+          if (analysis) {
+            notificationMessage += `\n\n分析結果:\n${analysis}`;
+          }
+
+          await replyToLine(replyToken, notificationMessage);
 
           return res.status(200).json({ message: 'OK' });
 
@@ -240,29 +243,58 @@ async function uploadToSupabase(userId, fileName, fileBuffer, fileType) {
 }
 
 /**
- * Geminiで画像分析
+ * Geminiでファイル分析（画像・PDF対応）
  */
-async function analyzeImageWithGemini(imageBuffer) {
+async function analyzeFileWithGemini(fileBuffer, mimeType, fileType) {
   const apiKey = process.env.GEMINI_API_KEY;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
 
-  const base64Image = imageBuffer.toString('base64');
+  const base64File = fileBuffer.toString('base64');
+
+  // ファイルタイプに応じたプロンプト
+  let prompt = '';
+  let maxTokens = 500;
+  
+  if (fileType === 'image') {
+    prompt = 'この画像の内容を日本語で簡潔に説明してください。';
+    maxTokens = 200;
+  } else if (fileType === 'pdf') {
+    prompt = `このPDFファイルを分析して、以下の形式で日本語で回答してください：
+
+【全体概要】
+このPDFの主題と目的を簡潔に説明
+
+【ページごとの内容】
+1ページ目: （内容の要約）
+2ページ目: （内容の要約）
+3ページ目: （内容の要約）
+...
+
+【重要なポイント】
+- ポイント1
+- ポイント2
+- ポイント3
+
+【まとめ】
+このPDFの結論や重要な情報`;
+    maxTokens = 1500;
+  }
 
   const payload = {
     contents: [{
       parts: [
-        { text: "この画像の内容を日本語で簡潔に説明してください。" },  // ← ここを変更
+        { text: prompt },
         {
           inline_data: {
-            mime_type: "image/jpeg",
-            data: base64Image
+            mime_type: mimeType,
+            data: base64File
           }
         }
       ]
     }],
     generationConfig: {
       temperature: 0.4,
-      maxOutputTokens: 200
+      maxOutputTokens: maxTokens
     }
   };
 
@@ -274,7 +306,8 @@ async function analyzeImageWithGemini(imageBuffer) {
     });
 
     if (!response.ok) {
-      console.error('Gemini image analysis failed:', response.status);
+      const errorText = await response.text();
+      console.error('Gemini file analysis failed:', response.status, errorText);
       return null;
     }
 
@@ -286,11 +319,10 @@ async function analyzeImageWithGemini(imageBuffer) {
 
     return null;
   } catch (error) {
-    console.error('Image analysis error:', error);
+    console.error('File analysis error:', error);
     return null;
   }
 }
-
 
 /**
  * ファイルメタデータをSupabaseに保存
