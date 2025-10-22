@@ -1,0 +1,210 @@
+// api/test-page.js
+module.exports = async (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    
+    const html = `
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>予約通知テスト</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Hiragino Kaku Gothic ProN', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #2563eb;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result.success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 2px solid #10b981;
+        }
+
+        .result.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #ef4444;
+        }
+
+        .result.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 予約通知テスト</h1>
+        
+        <form id="reservationForm">
+            <div class="form-group">
+                <label for="name">👤 名前</label>
+                <input type="text" id="name" placeholder="山田太郎" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">📧 メールアドレス</label>
+                <input type="email" id="email" placeholder="yamada@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="time">🕒 希望時間</label>
+                <input type="datetime-local" id="time" required>
+            </div>
+
+            <button type="submit" id="submitBtn">LINE通知を送信</button>
+        </form>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        // 初期値として現在時刻の1時間後を設定
+        const now = new Date();
+        now.setHours(now.getHours() + 1);
+        document.getElementById('time').value = now.toISOString().slice(0, 16);
+
+        document.getElementById('reservationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            const guestName = document.getElementById('name').value;
+            const guestEmail = document.getElementById('email').value;
+            const selectedTime = document.getElementById('time').value;
+
+            const resultDiv = document.getElementById('result');
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = '送信中...';
+            
+            resultDiv.textContent = '送信中...';
+            resultDiv.className = 'result show';
+
+            try {
+                const response = await fetch('/api/reservation-notify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        guestName: guestName,
+                        guestEmail: guestEmail,
+                        selectedTime: selectedTime
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    resultDiv.textContent = '✅ ' + result.message + ' LINEを確認してください！';
+                    resultDiv.className = 'result success show';
+                    document.getElementById('reservationForm').reset();
+                    
+                    const now = new Date();
+                    now.setHours(now.getHours() + 1);
+                    document.getElementById('time').value = now.toISOString().slice(0, 16);
+                } else {
+                    resultDiv.textContent = '❌ ' + result.message;
+                    resultDiv.className = 'result error show';
+                }
+            } catch (error) {
+                console.error('エラー:', error);
+                resultDiv.textContent = '❌ 通信エラーが発生しました: ' + error.message;
+                resultDiv.className = 'result error show';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'LINE通知を送信';
+            }
+        });
+    </script>
+</body>
+</html>
+    `;
+    
+    res.status(200).send(html);
+};
