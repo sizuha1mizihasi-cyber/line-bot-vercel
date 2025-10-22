@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
 
         res.status(200).json({ 
             success: true, 
-            message: 'LINE通知送信成功！' 
+            message: 'LINE通知送信成功!' 
         });
     } catch (error) {
         console.error('❌ エラー:', error.response?.data || error.message);
@@ -56,7 +56,7 @@ async function sendLineNotification(name, email, time) {
 
     const message = {
         type: 'text',
-        text: `🔔 新しい面接予約が入りました！\n\n👤 名前: ${name}\n📧 メール: ${email}\n🕒 希望時間: ${time}\n\n確認をお願いします。`
+        text: `🔔 新しい面接予約が入りました!\n\n👤 名前: ${name}\n📧 メール: ${email}\n🕒 希望時間: ${time}\n\n確認をお願いします。`
     };
 
     await axios.post(
