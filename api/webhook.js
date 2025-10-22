@@ -23,6 +23,23 @@ module.exports = async function handler(req, res) {
 
       const event = events[0];
 
+      // ★★★ USER ID取得コマンド ★★★
+      if (event.type === 'message' && event.message.type === 'text') {
+        const userMessage = event.message.text;
+        const userId = event.source.userId;
+        const replyToken = event.replyToken;
+
+        // 「テスト」と送られたらUSER IDを返す
+        if (userMessage === 'テスト' || userMessage === 'test' || userMessage === 'TEST') {
+          console.log('=============================');
+          console.log('👤 USER ID:', userId);
+          console.log('=============================');
+          
+          await replyToLine(replyToken, `あなたのUSER IDは:\n${userId}\n\nこのIDをコピーして、Vercelの環境変数 LINE_USER_ID に設定してください。`);
+          return res.status(200).json({ message: 'OK' });
+        }
+      }
+
       // ★ ファイルメッセージの処理
       if (event.type === 'message' && (event.message.type === 'image' || event.message.type === 'file')) {
         const replyToken = event.replyToken;
@@ -182,6 +199,12 @@ module.exports = async function handler(req, res) {
   return res.status(405).json({ error: 'Method not allowed' });
 };
 
+// 以下、既存の関数はそのまま...
+// (downloadLineFile, getFileExtension, uploadToSupabase, analyzeFileWithGemini, 
+//  saveFileMetadata, checkKeywordResponse, checkContextRelevance, checkWithGemini,
+//  getUserMode, setUserMode, getModeConfig, getConversationHistory, 
+//  saveConversation, callGeminiWithHistory, replyToLine)
+
 /**
  * LINEからファイルをダウンロード
  */
@@ -251,7 +274,6 @@ async function analyzeFileWithGemini(fileBuffer, mimeType, fileType) {
 
   const base64File = fileBuffer.toString('base64');
 
-  // ファイルタイプに応じたプロンプト
   let prompt = '';
   let maxTokens = 500;
   
@@ -328,7 +350,6 @@ async function analyzeFileWithGemini(fileBuffer, mimeType, fileType) {
  * ファイルメタデータをSupabaseに保存
  */
 async function saveFileMetadata(userId, fileName, message, storagePath, analysis) {
-  // ファイルの公開URLを取得
   const { data: urlData } = supabase.storage
     .from('user-files')
     .getPublicUrl(storagePath);
