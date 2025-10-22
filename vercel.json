@@ -7,7 +7,7 @@
     },
     {
       "source": "/demo",
-      "destination": "/public/test.html"
+      "destination": "/demo.html"
     }
   ]
 }
