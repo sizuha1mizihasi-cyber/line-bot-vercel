@@ -97,6 +97,56 @@ module.exports = async function handler(req, res) {
 
         console.log('User ID:', userId);
         console.log('User Message:', userMessage);
+  if (userMessage === '일정' || userMessage === '予約' || userMessage === 'schedule' || userMessage === 'スケジュール') {
+          try {
+            console.log('📅 Fetching schedules from Yakusoku-AI API...');
+            
+            const response = await fetch('https://app.yakusoku-ai.com/api/public/schedules');
+            
+            if (!response.ok) {
+              throw new Error(`API error: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('API result:', result);
+            
+            if (!result.success || !result.schedules || result.schedules.length === 0) {
+              await replyToLine(replyToken, '📅 現在予約可能なスケジュールがありません');
+              return res.status(200).json({ message: 'OK' });
+            }
+
+            let message = '📅 予約可能なスケジュール:\n\n';
+            
+            result.schedules.forEach((schedule, idx) => {
+              let url;
+              if (schedule.is_interview_mode) {
+                url = `https://app.yakusoku-ai.com/interview/${schedule.share_link}`;
+              } else if (schedule.is_candidate_mode) {
+                url = `https://app.yakusoku-ai.com/candidate/${schedule.share_link}`;
+              } else {
+                url = `https://app.yakusoku-ai.com/book/${schedule.share_link}`;
+              }
+
+              message += `${idx + 1}. ${schedule.title}\n`;
+              
+              if (schedule.description) {
+                message += `   ${schedule.description}\n`;
+              }
+              
+              message += `   期間: ${schedule.date_range_start} ~ ${schedule.date_range_end}\n`;
+              message += `   ${url}\n\n`;
+            });
+
+            console.log('✅ Sending schedule list to LINE');
+            await replyToLine(replyToken, message);
+            return res.status(200).json({ message: 'OK' });
+            
+          } catch (error) {
+            console.error('❌ Schedule fetch error:', error);
+            await replyToLine(replyToken, '❌ エラーが発生しました\nもう一度お試しください');
+            return res.status(200).json({ message: 'OK' });
+          }
+        }
 
         // モード切り替えコマンドをチェック
         if (userMessage === '/高速モード' || userMessage === '/fast') {
