@@ -345,7 +345,8 @@
         const response = await fetch('/api/keywords');
         if (!response.ok) throw new Error('データの取得に失敗しました');
 
-        keywords = await response.json();
+        const result = await response.json();
+        keywords = result.data || result; // dataプロパティがあればそれを使用
         renderKeywords();
 
         document.getElementById('loading').style.display = 'none';
