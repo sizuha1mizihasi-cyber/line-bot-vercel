@@ -36,6 +36,28 @@
       margin-bottom: 20px;
       display: flex;
       gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .sort-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-left: auto;
+    }
+
+    .sort-controls label {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .sort-controls select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+      cursor: pointer;
     }
 
     button {
@@ -74,6 +96,15 @@
       background: #5a6268;
     }
 
+    .btn-warning {
+      background: #ffc107;
+      color: #333;
+    }
+
+    .btn-warning:hover {
+      background: #e0a800;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -96,6 +127,10 @@
 
     tr:hover {
       background: #f8f9fa;
+    }
+
+    tr.modified {
+      background: #fff3cd;
     }
 
     .toggle-switch {
@@ -227,6 +262,17 @@
       margin-bottom: 20px;
     }
 
+    .warning {
+      background: #fff3cd;
+      color: #856404;
+      padding: 12px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
     .url-cell {
       max-width: 200px;
       overflow: hidden;
@@ -259,10 +305,24 @@
     <h1>🤖 LINE Bot キーワード管理</h1>
     
     <div id="message"></div>
+    <div id="unsavedWarning" class="warning" style="display: none;">
+      <span>⚠️ 保存されていない変更があります</span>
+      <button class="btn-warning" onclick="saveAllChanges()">すべて保存</button>
+    </div>
 
     <div class="actions">
       <button class="btn-primary" onclick="openAddModal()">➕ 新規追加</button>
       <button class="btn-secondary" onclick="loadKeywords()">🔄 更新</button>
+      
+      <div class="sort-controls">
+        <label for="sortOrder">並び順:</label>
+        <select id="sortOrder" onchange="applySorting()">
+          <option value="priority">優先度順</option>
+          <option value="created">追加順（新しい順）</option>
+          <option value="created-asc">追加順（古い順）</option>
+          <option value="keyword">あいうえお順</option>
+        </select>
+      </div>
     </div>
 
     <div id="loading" class="loading">読み込み中...</div>
@@ -330,6 +390,8 @@
 
   <script>
     let keywords = [];
+    let modifiedKeywords = new Set();
+    let currentSort = 'priority';
 
     // ページ読み込み時にデータ取得
     window.onload = () => {
@@ -346,8 +408,10 @@
         if (!response.ok) throw new Error('データの取得に失敗しました');
 
         const result = await response.json();
-        keywords = result.data || result; // dataプロパティがあればそれを使用
-        renderKeywords();
+        keywords = result.data || result;
+        modifiedKeywords.clear();
+        hideUnsavedWarning();
+        applySorting();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('keywordsTable').style.display = 'table';
@@ -358,13 +422,41 @@
       }
     }
 
+    // ソートを適用
+    function applySorting() {
+      currentSort = document.getElementById('sortOrder').value;
+      
+      let sortedKeywords = [...keywords];
+      
+      switch(currentSort) {
+        case 'priority':
+          sortedKeywords.sort((a, b) => b.priority - a.priority);
+          break;
+        case 'created':
+          sortedKeywords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          break;
+        case 'created-asc':
+          sortedKeywords.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          break;
+        case 'keyword':
+          sortedKeywords.sort((a, b) => a.keyword.localeCompare(b.keyword, 'ja'));
+          break;
+      }
+      
+      renderKeywords(sortedKeywords);
+    }
+
     // キーワード一覧を表示
-    function renderKeywords() {
+    function renderKeywords(sortedKeywords = keywords) {
       const tbody = document.getElementById('keywordsBody');
       tbody.innerHTML = '';
 
-      keywords.forEach(keyword => {
+      sortedKeywords.forEach(keyword => {
         const tr = document.createElement('tr');
+        if (modifiedKeywords.has(keyword.id)) {
+          tr.className = 'modified';
+        }
+        
         tr.innerHTML = `
           <td><strong>${escapeHtml(keyword.keyword)}</strong></td>
           <td>${escapeHtml(keyword.response_text)}</td>
@@ -375,7 +467,7 @@
           <td>
             <label class="toggle-switch">
               <input type="checkbox" ${keyword.is_active ? 'checked' : ''} 
-                     onchange="toggleActive(${keyword.id}, this.checked)">
+                     onchange="markAsModified(${keyword.id}, 'is_active', this.checked)">
               <span class="slider"></span>
             </label>
           </td>
@@ -386,6 +478,59 @@
         `;
         tbody.appendChild(tr);
       });
+    }
+
+    // 変更をマーク
+    function markAsModified(id, field, value) {
+      const keyword = keywords.find(k => k.id === id);
+      if (keyword) {
+        keyword[field] = value;
+        modifiedKeywords.add(id);
+        showUnsavedWarning();
+        applySorting();
+      }
+    }
+
+    // 未保存警告を表示
+    function showUnsavedWarning() {
+      document.getElementById('unsavedWarning').style.display = 'flex';
+    }
+
+    // 未保存警告を非表示
+    function hideUnsavedWarning() {
+      document.getElementById('unsavedWarning').style.display = 'none';
+    }
+
+    // すべての変更を保存
+    async function saveAllChanges() {
+      if (modifiedKeywords.size === 0) {
+        showMessage('保存する変更がありません', 'success');
+        return;
+      }
+
+      try {
+        const updates = Array.from(modifiedKeywords).map(id => {
+          const keyword = keywords.find(k => k.id === id);
+          return fetch('/api/keywords', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: keyword.id,
+              is_active: keyword.is_active
+            })
+          });
+        });
+
+        await Promise.all(updates);
+        
+        modifiedKeywords.clear();
+        hideUnsavedWarning();
+        showMessage('すべての変更を保存しました', 'success');
+        loadKeywords();
+      } catch (error) {
+        console.error('Error:', error);
+        showMessage('エラー: ' + error.message, 'error');
+      }
     }
 
     // 新規追加モーダルを開く
@@ -459,26 +604,6 @@
         showMessage('エラー: ' + error.message, 'error');
       }
     });
-
-    // 有効/無効を切り替え
-    async function toggleActive(id, isActive) {
-      try {
-        const response = await fetch('/api/keywords', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, is_active: isActive })
-        });
-
-        if (!response.ok) throw new Error('更新に失敗しました');
-
-        showMessage('更新しました', 'success');
-        loadKeywords();
-      } catch (error) {
-        console.error('Error:', error);
-        showMessage('エラー: ' + error.message, 'error');
-        loadKeywords();
-      }
-    }
 
     // キーワードを削除
     async function deleteKeyword(id) {
