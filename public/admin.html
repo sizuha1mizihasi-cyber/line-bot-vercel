@@ -411,7 +411,7 @@
       const token = localStorage.getItem('adminToken');
 
       if (!token) {
-        window.location.href = '/login';
+        window.location.href = '/login.html';
         return false;
       }
 
@@ -426,7 +426,7 @@
         if (!response.ok) {
           localStorage.removeItem('adminToken');
           localStorage.removeItem('adminUsername');
-          window.location.href = '/login';
+          window.location.href = '/login.html';
           return false;
         }
 
@@ -441,7 +441,7 @@
         return true;
       } catch (error) {
         console.error('Auth check error:', error);
-        window.location.href = '/login';
+        window.location.href = '/login.html';
         return false;
       }
     }
@@ -466,7 +466,7 @@
 
         localStorage.removeItem('adminToken');
         localStorage.removeItem('adminUsername');
-        window.location.href = '/login';
+        window.location.href = '/login.html';
       };
       header.parentElement.insertBefore(logoutBtn, header.nextSibling);
     }
