@@ -34,66 +34,51 @@
       padding-right: 120px;
     }
 
-    /* メッセージ表示エリア（固定位置） */
-    .message-area {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 90%;
-      max-width: 1340px;
-      z-index: 1000;
-      pointer-events: none;
-    }
-
-    .message-area > div {
-      pointer-events: auto;
-      margin-bottom: 10px;
-      padding: 16px 20px;
-      border-radius: 8px;
-      font-size: 15px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      animation: slideDown 0.3s ease-out;
-    }
-
-    @keyframes slideDown {
-      from {
-        opacity: 0;
-        transform: translateY(-20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .error {
-      background: #f8d7da;
-      color: #721c24;
-      border-left: 4px solid #dc3545;
-    }
-
-    .success {
-      background: #d4edda;
-      color: #155724;
-      border-left: 4px solid #28a745;
-    }
-
-    .warning {
-      background: #fff3cd;
-      color: #856404;
-      border-left: 4px solid #ffc107;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
     .actions {
       margin-bottom: 20px;
       display: flex;
       gap: 10px;
       align-items: center;
       flex-wrap: wrap;
+    }
+
+    /* 状態表示エリア */
+    .status-display {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-radius: 5px;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.3s, color 0.3s;
+      min-width: 280px;
+    }
+
+    .status-display.saved {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-display.unsaved {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status-display .save-btn {
+      padding: 6px 12px;
+      background: #ffc107;
+      color: #333;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .status-display .save-btn:hover {
+      background: #e0a800;
     }
 
     .sort-controls {
@@ -152,15 +137,6 @@
       background: #5a6268;
     }
 
-    .btn-warning {
-      background: #ffc107;
-      color: #333;
-    }
-
-    .btn-warning:hover {
-      background: #e0a800;
-    }
-
     .btn-logout {
       position: absolute;
       top: 30px;
@@ -177,6 +153,46 @@
 
     .btn-logout:hover {
       background: #c82333;
+    }
+
+    /* 通知メッセージ（画面上部固定） */
+    .toast-message {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 14px 20px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 2000;
+      animation: slideDown 0.3s ease-out;
+      min-width: 300px;
+      text-align: center;
+    }
+
+    .toast-message.success {
+      background: #d4edda;
+      color: #155724;
+      border-left: 4px solid #28a745;
+    }
+
+    .toast-message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border-left: 4px solid #dc3545;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
     }
 
     table {
@@ -348,15 +364,17 @@
   </style>
 </head>
 <body>
-  <!-- メッセージ表示エリア（固定位置） -->
-  <div class="message-area" id="messageArea"></div>
-
   <div class="container">
     <h1>🤖 LINE Bot キーワード管理</h1>
 
     <div class="actions">
       <button class="btn-primary" onclick="openAddModal()">➕ 新規追加</button>
       <button class="btn-secondary" onclick="loadKeywords()">🔄 更新</button>
+      
+      <!-- 状態表示エリア -->
+      <div id="statusDisplay" class="status-display saved">
+        <span id="statusText">✓ 最新の状態です</span>
+      </div>
       
       <div class="sort-controls">
         <label for="sortOrder">並び順:</label>
@@ -434,7 +452,6 @@
 
   <script>
     // ========== 認証機能 ==========
-    // 認証チェック
     async function checkAuth() {
       const token = localStorage.getItem('adminToken');
 
@@ -460,7 +477,6 @@
 
         const result = await response.json();
         
-        // ユーザー名を表示
         const username = localStorage.getItem('adminUsername');
         if (username) {
           document.querySelector('h1').textContent = `🤖 LINE Bot キーワード管理 (${username})`;
@@ -474,7 +490,6 @@
       }
     }
 
-    // ログアウト機能
     function addLogoutButton() {
       const container = document.querySelector('.container');
       const logoutBtn = document.createElement('button');
@@ -499,7 +514,6 @@
       container.appendChild(logoutBtn);
     }
 
-    // ページ読み込み時に認証チェック
     window.addEventListener('DOMContentLoaded', async () => {
       const isAuthenticated = await checkAuth();
       if (isAuthenticated) {
@@ -516,7 +530,6 @@
     // キーワード一覧を取得
     async function loadKeywords() {
       try {
-        // 現在のスクロール位置を保存
         const scrollPosition = window.scrollY;
         
         document.getElementById('loading').style.display = 'block';
@@ -528,17 +541,16 @@
         const result = await response.json();
         keywords = result.data || result;
         modifiedKeywords.clear();
-        hideUnsavedWarning();
+        updateStatusDisplay();
         applySorting();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('keywordsTable').style.display = 'table';
         
-        // スクロール位置を復元
         window.scrollTo(0, scrollPosition);
       } catch (error) {
         console.error('Error:', error);
-        showMessage('エラー: ' + error.message, 'error');
+        showToast('エラー: ' + error.message, 'error');
         document.getElementById('loading').style.display = 'none';
       }
     }
@@ -607,40 +619,41 @@
       if (keyword) {
         keyword[field] = value;
         modifiedKeywords.add(id);
-        showUnsavedWarning();
+        updateStatusDisplay();
         applySorting();
       }
     }
 
-    // 未保存警告を表示
-    function showUnsavedWarning() {
-      const messageArea = document.getElementById('messageArea');
-      const existingWarning = messageArea.querySelector('.warning');
+    // 状態表示を更新
+    function updateStatusDisplay() {
+      const statusDisplay = document.getElementById('statusDisplay');
+      const statusText = document.getElementById('statusText');
       
-      if (!existingWarning) {
-        const warningDiv = document.createElement('div');
-        warningDiv.className = 'warning';
-        warningDiv.id = 'unsavedWarning';
-        warningDiv.innerHTML = `
-          <span>⚠️ 保存されていない変更があります</span>
-          <button class="btn-warning" onclick="saveAllChanges()">すべて保存</button>
-        `;
-        messageArea.appendChild(warningDiv);
+      // 既存の保存ボタンを削除
+      const existingBtn = statusDisplay.querySelector('.save-btn');
+      if (existingBtn) {
+        existingBtn.remove();
       }
-    }
-
-    // 未保存警告を非表示
-    function hideUnsavedWarning() {
-      const warningDiv = document.getElementById('unsavedWarning');
-      if (warningDiv) {
-        warningDiv.remove();
+      
+      if (modifiedKeywords.size > 0) {
+        statusDisplay.className = 'status-display unsaved';
+        statusText.textContent = '⚠️ 保存されていない変更があります';
+        
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'save-btn';
+        saveBtn.textContent = 'すべて保存';
+        saveBtn.onclick = saveAllChanges;
+        statusDisplay.appendChild(saveBtn);
+      } else {
+        statusDisplay.className = 'status-display saved';
+        statusText.textContent = '✓ 最新の状態です';
       }
     }
 
     // すべての変更を保存
     async function saveAllChanges() {
       if (modifiedKeywords.size === 0) {
-        showMessage('保存する変更がありません', 'success');
+        showToast('保存する変更がありません', 'success');
         return;
       }
 
@@ -660,14 +673,12 @@
         await Promise.all(updates);
         
         modifiedKeywords.clear();
-        hideUnsavedWarning();
-        showMessage('すべての変更を保存しました', 'success');
-        
-        // テーブルだけ再描画（スクロール位置維持）
+        updateStatusDisplay();
+        showToast('すべての変更を保存しました', 'success');
         applySorting();
       } catch (error) {
         console.error('Error:', error);
-        showMessage('エラー: ' + error.message, 'error');
+        showToast('エラー: ' + error.message, 'error');
       }
     }
 
@@ -716,7 +727,6 @@
       try {
         let response;
         if (id) {
-          // 更新
           data.id = parseInt(id);
           response = await fetch('/api/keywords', {
             method: 'PUT',
@@ -724,7 +734,6 @@
             body: JSON.stringify(data)
           });
         } else {
-          // 新規追加
           response = await fetch('/api/keywords', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -734,12 +743,12 @@
 
         if (!response.ok) throw new Error('保存に失敗しました');
 
-        showMessage(id ? '更新しました' : '追加しました', 'success');
+        showToast(id ? '更新しました' : '追加しました', 'success');
         closeModal();
         loadKeywords();
       } catch (error) {
         console.error('Error:', error);
-        showMessage('エラー: ' + error.message, 'error');
+        showToast('エラー: ' + error.message, 'error');
       }
     });
 
@@ -756,27 +765,26 @@
 
         if (!response.ok) throw new Error('削除に失敗しました');
 
-        showMessage('削除しました', 'success');
+        showToast('削除しました', 'success');
         loadKeywords();
       } catch (error) {
         console.error('Error:', error);
-        showMessage('エラー: ' + error.message, 'error');
+        showToast('エラー: ' + error.message, 'error');
       }
     }
 
-    // メッセージを表示（新しい実装）
-    function showMessage(text, type) {
-      const messageArea = document.getElementById('messageArea');
-      const messageDiv = document.createElement('div');
-      messageDiv.className = type;
-      messageDiv.textContent = text;
+    // トースト通知を表示
+    function showToast(text, type) {
+      const toast = document.createElement('div');
+      toast.className = `toast-message ${type}`;
+      toast.textContent = text;
       
-      messageArea.appendChild(messageDiv);
+      document.body.appendChild(toast);
 
       setTimeout(() => {
-        messageDiv.style.opacity = '0';
-        messageDiv.style.transform = 'translateY(-20px)';
-        setTimeout(() => messageDiv.remove(), 300);
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(-20px)';
+        setTimeout(() => toast.remove(), 300);
       }, 3000);
     }
 
