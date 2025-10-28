@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LINE Bot 管理画面</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 30px;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+      font-size: 28px;
+    }
+
+    .actions {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .sort-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-left: auto;
+    }
+
+    .sort-controls label {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .sort-controls select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: #06c755;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #05b04b;
+    }
+
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .btn-warning {
+      background: #ffc107;
+      color: #333;
+    }
+
+    .btn-warning:hover {
+      background: #e0a800;
+    }
+
+    .btn-logout {
+      float: right;
+      padding: 8px 16px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-left: 10px;
+    }
+
+    .btn-logout:hover {
+      background: #c82333;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    th {
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #333;
+      position: sticky;
+      top: 0;
+    }
+
+    tr:hover {
+      background: #f8f9fa;
+    }
+
+    tr.modified {
+      background: #fff3cd;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: #06c755;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+    }
+
+    .modal-content {
+      background-color: white;
+      margin: 5% auto;
+      padding: 30px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 600px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .modal-header {
+      margin-bottom: 20px;
+    }
+
+    .modal-header h2 {
+      color: #333;
+      font-size: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 12px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    .success {
+      background: #d4edda;
+      color: #155724;
+      padding: 12px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    .warning {
+      background: #fff3cd;
+      color: #856404;
+      padding: 12px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .url-cell {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .url-cell a {
+      color: #06c755;
+      text-decoration: none;
+    }
+
+    .url-cell a:hover {
+      text-decoration: underline;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 5px;
+    }
+
+    .btn-small {
+      padding: 5px 12px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 LINE Bot キーワード管理</h1>
+    
+    <div id="message"></div>
+    <div id="unsavedWarning" class="warning" style="display: none;">
+      <span>⚠️ 保存されていない変更があります</span>
+      <button class="btn-warning" onclick="saveAllChanges()">すべて保存</button>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" onclick="openAddModal()">➕ 新規追加</button>
+      <button class="btn-secondary" onclick="loadKeywords()">🔄 更新</button>
+      
+      <div class="sort-controls">
+        <label for="sortOrder">並び順:</label>
+        <select id="sortOrder" onchange="applySorting()">
+          <option value="priority">優先度順</option>
+          <option value="created">追加順（新しい順）</option>
+          <option value="created-asc">追加順（古い順）</option>
+          <option value="keyword">あいうえお順</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="loading" class="loading">読み込み中...</div>
+    
+    <table id="keywordsTable" style="display: none;">
+      <thead>
+        <tr>
+          <th>キーワード</th>
+          <th>応答テキスト</th>
+          <th>URL</th>
+          <th>優先度</th>
+          <th>有効</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="keywordsBody">
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 追加/編集モーダル -->
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">キーワード追加</h2>
+      </div>
+      
+      <form id="editForm">
+        <input type="hidden" id="editId">
+        
+        <div class="form-group">
+          <label for="editKeyword">キーワード *</label>
+          <input type="text" id="editKeyword" required>
+        </div>
+
+        <div class="form-group">
+          <label for="editResponse">応答テキスト *</label>
+          <textarea id="editResponse" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="editUrl">URL</label>
+          <input type="url" id="editUrl" placeholder="https://example.com">
+        </div>
+
+        <div class="form-group">
+          <label for="editPriority">優先度</label>
+          <input type="number" id="editPriority" value="0" min="0">
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="editIsActive" checked>
+            有効にする
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal()">キャンセル</button>
+          <button type="submit" class="btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // ========== 認証機能 ==========
+    // 認証チェック
+    async function checkAuth() {
+      const token = localStorage.getItem('adminToken');
+
+      if (!token) {
+        window.location.href = '/login';
+        return false;
+      }
+
+      try {
+        const response = await fetch('/api/admin-verify', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          localStorage.removeItem('adminToken');
+          localStorage.removeItem('adminUsername');
+          window.location.href = '/login';
+          return false;
+        }
+
+        const result = await response.json();
+        
+        // ユーザー名を表示
+        const username = localStorage.getItem('adminUsername');
+        if (username) {
+          document.querySelector('h1').textContent = `🤖 LINE Bot キーワード管理 (${username})`;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Auth check error:', error);
+        window.location.href = '/login';
+        return false;
+      }
+    }
+
+    // ログアウト機能
+    function addLogoutButton() {
+      const header = document.querySelector('h1');
+      const logoutBtn = document.createElement('button');
+      logoutBtn.textContent = 'ログアウト';
+      logoutBtn.className = 'btn-logout';
+      logoutBtn.onclick = async () => {
+        const token = localStorage.getItem('adminToken');
+        
+        if (token) {
+          await fetch('/api/admin-logout', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+        }
+
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminUsername');
+        window.location.href = '/login';
+      };
+      header.parentElement.insertBefore(logoutBtn, header.nextSibling);
+    }
+
+    // ページ読み込み時に認証チェック
+    window.addEventListener('DOMContentLoaded', async () => {
+      const isAuthenticated = await checkAuth();
+      if (isAuthenticated) {
+        addLogoutButton();
+        loadKeywords();
+      }
+    });
+    // ========== 認証機能ここまで ==========
+
+    let keywords = [];
+    let modifiedKeywords = new Set();
+    let currentSort = 'priority';
+
+    // キーワード一覧を取得
+    async function loadKeywords() {
+      try {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('keywordsTable').style.display = 'none';
+
+        const response = await fetch('/api/keywords');
+        if (!response.ok) throw new Error('データの取得に失敗しました');
+
+        const result = await response.json();
+        keywords = result.data || result;
+        modifiedKeywords.clear();
+        hideUnsavedWarning();
+        applySorting();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('keywordsTable').style.display = 'table';
+      } catch (error) {
+        console.error('Error:', error);
+        showMessage('エラー: ' + error.message, 'error');
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    // ソートを適用
+    function applySorting() {
+      currentSort = document.getElementById('sortOrder').value;
+      
+      let sortedKeywords = [...keywords];
+      
+      switch(currentSort) {
+        case 'priority':
+          sortedKeywords.sort((a, b) => b.priority - a.priority);
+          break;
+        case 'created':
+          sortedKeywords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          break;
+        case 'created-asc':
+          sortedKeywords.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          break;
+        case 'keyword':
+          sortedKeywords.sort((a, b) => a.keyword.localeCompare(b.keyword, 'ja'));
+          break;
+      }
+      
+      renderKeywords(sortedKeywords);
+    }
+
+    // キーワード一覧を表示
+    function renderKeywords(sortedKeywords = keywords) {
+      const tbody = document.getElementById('keywordsBody');
+      tbody.innerHTML = '';
+
+      sortedKeywords.forEach(keyword => {
+        const tr = document.createElement('tr');
+        if (modifiedKeywords.has(keyword.id)) {
+          tr.className = 'modified';
+        }
+        
+        tr.innerHTML = `
+          <td><strong>${escapeHtml(keyword.keyword)}</strong></td>
+          <td>${escapeHtml(keyword.response_text)}</td>
+          <td class="url-cell">
+            ${keyword.url ? `<a href="${escapeHtml(keyword.url)}" target="_blank">${escapeHtml(keyword.url)}</a>` : '-'}
+          </td>
+          <td>${keyword.priority}</td>
+          <td>
+            <label class="toggle-switch">
+              <input type="checkbox" ${keyword.is_active ? 'checked' : ''} 
+                     onchange="markAsModified(${keyword.id}, 'is_active', this.checked)">
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td class="action-buttons">
+            <button class="btn-primary btn-small" onclick="openEditModal(${keyword.id})">編集</button>
+            <button class="btn-danger btn-small" onclick="deleteKeyword(${keyword.id})">削除</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 変更をマーク
+    function markAsModified(id, field, value) {
+      const keyword = keywords.find(k => k.id === id);
+      if (keyword) {
+        keyword[field] = value;
+        modifiedKeywords.add(id);
+        showUnsavedWarning();
+        applySorting();
+      }
+    }
+
+    // 未保存警告を表示
+    function showUnsavedWarning() {
+      document.getElementById('unsavedWarning').style.display = 'flex';
+    }
+
+    // 未保存警告を非表示
+    function hideUnsavedWarning() {
+      document.getElementById('unsavedWarning').style.display = 'none';
+    }
+
+    // すべての変更を保存
+    async function saveAllChanges() {
+      if (modifiedKeywords.size === 0) {
+        showMessage('保存する変更がありません', 'success');
+        return;
+      }
+
+      try {
+        const updates = Array.from(modifiedKeywords).map(id => {
+          const keyword = keywords.find(k => k.id === id);
+          return fetch('/api/keywords', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: keyword.id,
+              is_active: keyword.is_active
+            })
+          });
+        });
+
+        await Promise.all(updates);
+        
+        modifiedKeywords.clear();
+        hideUnsavedWarning();
+        showMessage('すべての変更を保存しました', 'success');
+        loadKeywords();
+      } catch (error) {
+        console.error('Error:', error);
+        showMessage('エラー: ' + error.message, 'error');
+      }
+    }
+
+    // 新規追加モーダルを開く
+    function openAddModal() {
+      document.getElementById('modalTitle').textContent = 'キーワード追加';
+      document.getElementById('editForm').reset();
+      document.getElementById('editId').value = '';
+      document.getElementById('editIsActive').checked = true;
+      document.getElementById('editModal').style.display = 'block';
+    }
+
+    // 編集モーダルを開く
+    function openEditModal(id) {
+      const keyword = keywords.find(k => k.id === id);
+      if (!keyword) return;
+
+      document.getElementById('modalTitle').textContent = 'キーワード編集';
+      document.getElementById('editId').value = keyword.id;
+      document.getElementById('editKeyword').value = keyword.keyword;
+      document.getElementById('editResponse').value = keyword.response_text;
+      document.getElementById('editUrl').value = keyword.url || '';
+      document.getElementById('editPriority').value = keyword.priority;
+      document.getElementById('editIsActive').checked = keyword.is_active;
+      document.getElementById('editModal').style.display = 'block';
+    }
+
+    // モーダルを閉じる
+    function closeModal() {
+      document.getElementById('editModal').style.display = 'none';
+    }
+
+    // フォーム送信
+    document.getElementById('editForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const id = document.getElementById('editId').value;
+      const data = {
+        keyword: document.getElementById('editKeyword').value,
+        response_text: document.getElementById('editResponse').value,
+        url: document.getElementById('editUrl').value || null,
+        priority: parseInt(document.getElementById('editPriority').value),
+        is_active: document.getElementById('editIsActive').checked
+      };
+
+      try {
+        let response;
+        if (id) {
+          // 更新
+          data.id = parseInt(id);
+          response = await fetch('/api/keywords', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        } else {
+          // 新規追加
+          response = await fetch('/api/keywords', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        }
+
+        if (!response.ok) throw new Error('保存に失敗しました');
+
+        showMessage(id ? '更新しました' : '追加しました', 'success');
+        closeModal();
+        loadKeywords();
+      } catch (error) {
+        console.error('Error:', error);
+        showMessage('エラー: ' + error.message, 'error');
+      }
+    });
+
+    // キーワードを削除
+    async function deleteKeyword(id) {
+      if (!confirm('本当に削除しますか？')) return;
+
+      try {
+        const response = await fetch('/api/keywords', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+
+        if (!response.ok) throw new Error('削除に失敗しました');
+
+        showMessage('削除しました', 'success');
+        loadKeywords();
+      } catch (error) {
+        console.error('Error:', error);
+        showMessage('エラー: ' + error.message, 'error');
+      }
+    }
+
+    // メッセージを表示
+    function showMessage(text, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = text;
+      messageDiv.style.display = 'block';
+
+      setTimeout(() => {
+        messageDiv.style.display = 'none';
+      }, 3000);
+    }
+
+    // HTMLエスケープ
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // モーダル外クリックで閉じる
+    window.onclick = (event) => {
+      const modal = document.getElementById('editModal');
+      if (event.target === modal) {
+        closeModal();
+      }
+    };
+  </script>
+</body>
+</html>
