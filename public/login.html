@@ -195,8 +195,9 @@
                     localStorage.setItem('adminToken', result.token);
                     localStorage.setItem('adminUsername', result.username);
 
-                    // 管理画面にリダイレクト
-                    window.location.href = '/admin';
+                   // 管理画面にリダイレクト
+                    window.location.href = '/admin.html';
+
                 } else {
                     errorMessage.textContent = result.error || 'ログインに失敗しました';
                     errorMessage.classList.add('show');
