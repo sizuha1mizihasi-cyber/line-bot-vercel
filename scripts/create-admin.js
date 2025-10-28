@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 
 // ここでパスワードを設定してください
-const password = 'admin123';  // ← 好きなパスワードに変更
+const password = 'Ybj68hi0';  // ← 好きなパスワードに変更
 const saltRounds = 10;
 
 bcrypt.hash(password, saltRounds, (err, hash) => {
