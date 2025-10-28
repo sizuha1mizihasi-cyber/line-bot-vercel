@@ -23,23 +23,7 @@ module.exports = async function handler(req, res) {
 
       const event = events[0];
 
-      // ★★★ USER ID取得コマンド ★★★
-      if (event.type === 'message' && event.message.type === 'text') {
-        const userMessage = event.message.text;
-        const userId = event.source.userId;
-        const replyToken = event.replyToken;
-
-        // 「テスト」と送られたらUSER IDを返す
-        if (userMessage === 'テスト' || userMessage === 'test' || userMessage === 'TEST') {
-          console.log('=============================');
-          console.log('👤 USER ID:', userId);
-          console.log('=============================');
-          
-          await replyToLine(replyToken, `あなたのUSER IDは:\n${userId}\n\nこのIDをコピーして、Vercelの環境変数 LINE_USER_ID に設定してください。`);
-          return res.status(200).json({ message: 'OK' });
-        }
-      }
-
+      
       // ★ ファイルメッセージの処理
       if (event.type === 'message' && (event.message.type === 'image' || event.message.type === 'file')) {
         const replyToken = event.replyToken;
