@@ -105,6 +105,22 @@
       background: #e0a800;
     }
 
+    .btn-logout {
+      float: right;
+      padding: 8px 16px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-left: 10px;
+    }
+
+    .btn-logout:hover {
+      background: #c82333;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -389,14 +405,85 @@
   </div>
 
   <script>
+    // ========== 認証機能 ==========
+    // 認証チェック
+    async function checkAuth() {
+      const token = localStorage.getItem('adminToken');
+
+      if (!token) {
+        window.location.href = '/login';
+        return false;
+      }
+
+      try {
+        const response = await fetch('/api/admin-verify', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          localStorage.removeItem('adminToken');
+          localStorage.removeItem('adminUsername');
+          window.location.href = '/login';
+          return false;
+        }
+
+        const result = await response.json();
+        
+        // ユーザー名を表示
+        const username = localStorage.getItem('adminUsername');
+        if (username) {
+          document.querySelector('h1').textContent = `🤖 LINE Bot キーワード管理 (${username})`;
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Auth check error:', error);
+        window.location.href = '/login';
+        return false;
+      }
+    }
+
+    // ログアウト機能
+    function addLogoutButton() {
+      const header = document.querySelector('h1');
+      const logoutBtn = document.createElement('button');
+      logoutBtn.textContent = 'ログアウト';
+      logoutBtn.className = 'btn-logout';
+      logoutBtn.onclick = async () => {
+        const token = localStorage.getItem('adminToken');
+        
+        if (token) {
+          await fetch('/api/admin-logout', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+        }
+
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminUsername');
+        window.location.href = '/login';
+      };
+      header.parentElement.insertBefore(logoutBtn, header.nextSibling);
+    }
+
+    // ページ読み込み時に認証チェック
+    window.addEventListener('DOMContentLoaded', async () => {
+      const isAuthenticated = await checkAuth();
+      if (isAuthenticated) {
+        addLogoutButton();
+        loadKeywords();
+      }
+    });
+    // ========== 認証機能ここまで ==========
+
     let keywords = [];
     let modifiedKeywords = new Set();
     let currentSort = 'priority';
-
-    // ページ読み込み時にデータ取得
-    window.onload = () => {
-      loadKeywords();
-    };
 
     // キーワード一覧を取得
     async function loadKeywords() {
