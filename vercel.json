@@ -7,10 +7,17 @@
     {
       "source": "/admin",
       "destination": "/public/admin.html"
-    },
+    }
+  ],
+  "headers": [
     {
-      "source": "/demo",
-      "destination": "/public/demo.html"
+      "source": "/public/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
     }
   ]
 }
