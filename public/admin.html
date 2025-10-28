@@ -18,6 +18,7 @@
     }
 
     .container {
+      position: relative;
       max-width: 1400px;
       margin: 0 auto;
       background: white;
@@ -30,6 +31,7 @@
       color: #333;
       margin-bottom: 30px;
       font-size: 28px;
+      padding-right: 120px;
     }
 
     .actions {
@@ -106,7 +108,9 @@
     }
 
     .btn-logout {
-      float: right;
+      position: absolute;
+      top: 30px;
+      right: 30px;
       padding: 8px 16px;
       background: #dc3545;
       color: white;
@@ -114,7 +118,7 @@
       border-radius: 5px;
       cursor: pointer;
       font-size: 14px;
-      margin-left: 10px;
+      z-index: 100;
     }
 
     .btn-logout:hover {
@@ -448,7 +452,7 @@
 
     // ログアウト機能
     function addLogoutButton() {
-      const header = document.querySelector('h1');
+      const container = document.querySelector('.container');
       const logoutBtn = document.createElement('button');
       logoutBtn.textContent = 'ログアウト';
       logoutBtn.className = 'btn-logout';
@@ -468,7 +472,7 @@
         localStorage.removeItem('adminUsername');
         window.location.href = '/login.html';
       };
-      header.parentElement.insertBefore(logoutBtn, header.nextSibling);
+      container.appendChild(logoutBtn);
     }
 
     // ページ読み込み時に認証チェック
@@ -488,6 +492,9 @@
     // キーワード一覧を取得
     async function loadKeywords() {
       try {
+        // 現在のスクロール位置を保存
+        const scrollPosition = window.scrollY;
+        
         document.getElementById('loading').style.display = 'block';
         document.getElementById('keywordsTable').style.display = 'none';
 
@@ -502,6 +509,9 @@
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('keywordsTable').style.display = 'table';
+        
+        // スクロール位置を復元
+        window.scrollTo(0, scrollPosition);
       } catch (error) {
         console.error('Error:', error);
         showMessage('エラー: ' + error.message, 'error');
@@ -613,7 +623,9 @@
         modifiedKeywords.clear();
         hideUnsavedWarning();
         showMessage('すべての変更を保存しました', 'success');
-        loadKeywords();
+        
+        // テーブルだけ再描画（スクロール位置維持）
+        applySorting();
       } catch (error) {
         console.error('Error:', error);
         showMessage('エラー: ' + error.message, 'error');
