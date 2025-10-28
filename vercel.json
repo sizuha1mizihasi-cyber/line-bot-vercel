@@ -7,15 +7,15 @@
     },
     {
       "source": "/demo",
-      "destination": "/demo.html"
+      "destination": "/public/demo.html"
     },
     {
       "source": "/admin",
-      "destination": "/admin.html"
+      "destination": "/public/admin.html"
     },
     {
       "source": "/login",
-      "destination": "/login.html"
+      "destination": "/public/login.html"
     }
   ]
 }
