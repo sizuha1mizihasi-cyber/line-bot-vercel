@@ -1089,23 +1089,47 @@
       });
     }
 
-    // 優先度を更新
+    // 優先度を更新（行を黄色くする）
     function updatePriority(id, value) {
       const keyword = keywords.find(k => k.id === id);
       if (keyword) {
         keyword.priority = parseInt(value);
         modifiedKeywords.add(id);
         updateStatusDisplay();
+        
+        // 該当行を黄色くする
+        const rows = document.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+          const priorityInput = row.querySelector('.priority-input');
+          if (priorityInput && parseInt(priorityInput.value) === keyword.priority) {
+            const keywordText = row.querySelector('td:first-child strong').textContent;
+            if (keywordText === keyword.keyword) {
+              row.classList.add('modified');
+            }
+          }
+        });
       }
     }
 
-    // 有効状態を更新
+    // 有効状態を更新（行を黄色くする）
     function updateActiveStatus(id, value) {
       const keyword = keywords.find(k => k.id === id);
       if (keyword) {
         keyword.is_active = value;
         modifiedKeywords.add(id);
         updateStatusDisplay();
+        
+        // 該当行を黄色くする
+        const rows = document.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+          const checkbox = row.querySelector('.toggle-switch input');
+          if (checkbox && checkbox.checked === value) {
+            const keywordText = row.querySelector('td:first-child strong').textContent;
+            if (keywordText === keyword.keyword) {
+              row.classList.add('modified');
+            }
+          }
+        });
       }
     }
 
