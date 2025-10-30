@@ -42,6 +42,65 @@
       flex-wrap: wrap;
     }
 
+    /* 検索バー */
+    .search-bar {
+      flex: 1;
+      min-width: 250px;
+      max-width: 400px;
+      position: relative;
+    }
+
+    .search-bar input {
+      width: 100%;
+      padding: 10px 40px 10px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .search-bar input:focus {
+      outline: none;
+      border-color: #06c755;
+      box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.1);
+    }
+
+    .search-bar .search-icon {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #999;
+      pointer-events: none;
+    }
+
+    .search-bar .clear-search {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #999;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    .search-bar .clear-search:hover {
+      background: #666;
+    }
+
+    .search-bar .clear-search.show {
+      display: flex;
+    }
+
     /* 状態表示エリア */
     .status-display {
       display: flex;
@@ -186,6 +245,12 @@
       border-left: 4px solid #dc3545;
     }
 
+    .toast-message.warning {
+      background: #fff3cd;
+      color: #856404;
+      border-left: 4px solid #ffc107;
+    }
+
     @keyframes slideDown {
       from {
         opacity: 0;
@@ -223,6 +288,10 @@
 
     tr.modified {
       background: #fff3cd;
+    }
+
+    tr.duplicate {
+      background: #ffe6e6;
     }
 
     .toggle-switch {
@@ -338,6 +407,24 @@
       color: #666;
     }
 
+    .no-results {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+      font-size: 16px;
+      display: none;
+    }
+
+    .no-results.show {
+      display: block;
+    }
+
+    .no-results-icon {
+      font-size: 48px;
+      margin-bottom: 15px;
+      opacity: 0.5;
+    }
+
     .url-cell {
       max-width: 200px;
       overflow: hidden;
@@ -363,6 +450,17 @@
       padding: 5px 12px;
       font-size: 12px;
     }
+
+    .duplicate-badge {
+      display: inline-block;
+      background: #dc3545;
+      color: white;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin-left: 8px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -372,6 +470,18 @@
     <div class="actions">
       <button class="btn-primary" onclick="openAddModal()">➕ 新規追加</button>
       <button class="btn-secondary" onclick="loadKeywords()">🔄 更新</button>
+      
+      <!-- 検索バー -->
+      <div class="search-bar">
+        <input 
+          type="text" 
+          id="searchInput" 
+          placeholder="キーワードを検索..." 
+          oninput="handleSearch()"
+        >
+        <span class="search-icon" id="searchIcon">🔍</span>
+        <button class="clear-search" id="clearSearch" onclick="clearSearch()">×</button>
+      </div>
       
       <!-- 状態表示エリア -->
       <div id="statusDisplay" class="status-display saved">
@@ -390,6 +500,11 @@
     </div>
 
     <div id="loading" class="loading">読み込み中...</div>
+    
+    <div id="noResults" class="no-results">
+      <div class="no-results-icon">🔍</div>
+      <div>該当するキーワードが見つかりません</div>
+    </div>
     
     <table id="keywordsTable" style="display: none;">
       <thead>
@@ -526,8 +641,10 @@
     // ========== 認証機能ここまで ==========
 
     let keywords = [];
+    let filteredKeywords = [];
     let modifiedKeywords = new Set();
     let currentSort = 'priority';
+    let searchQuery = '';
 
     // キーワード一覧を取得
     async function loadKeywords() {
@@ -536,6 +653,7 @@
         
         document.getElementById('loading').style.display = 'block';
         document.getElementById('keywordsTable').style.display = 'none';
+        document.getElementById('noResults').classList.remove('show');
 
         const response = await fetch('/api/keywords');
         if (!response.ok) throw new Error('データの取得に失敗しました');
@@ -544,10 +662,15 @@
         keywords = result.data || result;
         modifiedKeywords.clear();
         updateStatusDisplay();
-        applySorting();
+        
+        // 検索クエリがあれば適用
+        if (searchQuery) {
+          handleSearch();
+        } else {
+          applySorting();
+        }
 
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('keywordsTable').style.display = 'table';
         
         window.scrollTo(0, scrollPosition);
       } catch (error) {
@@ -557,11 +680,57 @@
       }
     }
 
+    // 検索処理
+    function handleSearch() {
+      const searchInput = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('clearSearch');
+      const searchIcon = document.getElementById('searchIcon');
+      
+      searchQuery = searchInput.value.trim().toLowerCase();
+      
+      if (searchQuery) {
+        clearBtn.classList.add('show');
+        searchIcon.style.display = 'none';
+        
+        filteredKeywords = keywords.filter(keyword => 
+          keyword.keyword.toLowerCase().includes(searchQuery) ||
+          keyword.response_text.toLowerCase().includes(searchQuery)
+        );
+        
+        if (filteredKeywords.length > 0) {
+          document.getElementById('noResults').classList.remove('show');
+          document.getElementById('keywordsTable').style.display = 'table';
+          applySorting(filteredKeywords);
+        } else {
+          document.getElementById('keywordsTable').style.display = 'none';
+          document.getElementById('noResults').classList.add('show');
+        }
+      } else {
+        clearSearch();
+      }
+    }
+
+    // 検索クリア
+    function clearSearch() {
+      const searchInput = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('clearSearch');
+      const searchIcon = document.getElementById('searchIcon');
+      
+      searchInput.value = '';
+      searchQuery = '';
+      clearBtn.classList.remove('show');
+      searchIcon.style.display = 'block';
+      
+      document.getElementById('noResults').classList.remove('show');
+      document.getElementById('keywordsTable').style.display = 'table';
+      applySorting();
+    }
+
     // ソートを適用
-    function applySorting() {
+    function applySorting(dataToSort = null) {
       currentSort = document.getElementById('sortOrder').value;
       
-      let sortedKeywords = [...keywords];
+      let sortedKeywords = [...(dataToSort || keywords)];
       
       switch(currentSort) {
         case 'priority':
@@ -581,19 +750,46 @@
       renderKeywords(sortedKeywords);
     }
 
+    // 重複チェック
+    function checkDuplicates() {
+      const keywordMap = new Map();
+      const duplicates = new Set();
+      
+      keywords.forEach(keyword => {
+        const key = keyword.keyword.toLowerCase();
+        if (keywordMap.has(key)) {
+          duplicates.add(key);
+          keywordMap.get(key).push(keyword.id);
+        } else {
+          keywordMap.set(key, [keyword.id]);
+        }
+      });
+      
+      return { keywordMap, duplicates };
+    }
+
     // キーワード一覧を表示
     function renderKeywords(sortedKeywords = keywords) {
       const tbody = document.getElementById('keywordsBody');
       tbody.innerHTML = '';
 
+      const { keywordMap, duplicates } = checkDuplicates();
+
       sortedKeywords.forEach(keyword => {
         const tr = document.createElement('tr');
+        const isDuplicate = duplicates.has(keyword.keyword.toLowerCase());
+        
         if (modifiedKeywords.has(keyword.id)) {
           tr.className = 'modified';
+        } else if (isDuplicate) {
+          tr.className = 'duplicate';
         }
         
         tr.innerHTML = `
-          <td><strong>${escapeHtml(keyword.keyword)}</strong></td>
+          <td>
+            <strong>${escapeHtml(keyword.keyword)}</strong>
+            ${isDuplicate ? '<span class="duplicate-badge">重複</span>' : ''}
+          </td>
           <td>${escapeHtml(keyword.response_text)}</td>
           <td class="url-cell">
             ${keyword.url ? `<a href="${escapeHtml(keyword.url)}" target="_blank">${escapeHtml(keyword.url)}</a>` : '-'}
@@ -622,7 +818,11 @@
         keyword[field] = value;
         modifiedKeywords.add(id);
         updateStatusDisplay();
-        applySorting();
+        if (searchQuery) {
+          handleSearch();
+        } else {
+          applySorting();
+        }
       }
     }
 
@@ -677,7 +877,11 @@
         modifiedKeywords.clear();
         updateStatusDisplay();
         showToast('すべての変更を保存しました', 'success');
-        applySorting();
+        if (searchQuery) {
+          handleSearch();
+        } else {
+          applySorting();
+        }
       } catch (error) {
         console.error('Error:', error);
         showToast('エラー: ' + error.message, 'error');
@@ -718,8 +922,21 @@
       e.preventDefault();
 
       const id = document.getElementById('editId').value;
+      const keywordValue = document.getElementById('editKeyword').value.trim();
+      
+      // 重複チェック
+      const existingKeyword = keywords.find(k => 
+        k.keyword.toLowerCase() === keywordValue.toLowerCase() && 
+        k.id !== parseInt(id)
+      );
+      
+      if (existingKeyword) {
+        showToast('⚠️ このキーワードは既に登録されています', 'warning');
+        return;
+      }
+
       const data = {
-        keyword: document.getElementById('editKeyword').value,
+        keyword: keywordValue,
         response_text: document.getElementById('editResponse').value,
         url: document.getElementById('editUrl').value || null,
         priority: parseInt(document.getElementById('editPriority').value),
