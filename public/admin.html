@@ -415,7 +415,7 @@
       padding: 12px;
       text-align: left;
       border-bottom: 1px solid #e8e8e8;
-      transition: all 0.2s;
+      transition: background 0.2s;
     }
 
     th {
@@ -429,7 +429,6 @@
 
     tbody tr {
       animation: fadeInRow 0.4s ease-out both;
-      transition: all 0.2s;
     }
 
     tbody tr:nth-child(1) { animation-delay: 0.05s; }
@@ -451,7 +450,6 @@
 
     tr:hover {
       background: linear-gradient(135deg, #f8f9fa, #f0f0f0);
-      transform: scale(1.01);
     }
 
     tr.modified {
@@ -460,6 +458,25 @@
 
     tr.duplicate {
       background: linear-gradient(135deg, #ffe6e6, #ffd4d4);
+    }
+
+    /* 優先度の直接編集 */
+    .priority-input {
+      width: 60px;
+      padding: 4px 8px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      text-align: center;
+      transition: all 0.3s;
+      background: #fafafa;
+    }
+
+    .priority-input:focus {
+      outline: none;
+      border-color: #06c755;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.1);
     }
 
     .toggle-switch {
@@ -1046,11 +1063,20 @@
           <td class="url-cell">
             ${keyword.url ? `<a href="${escapeHtml(keyword.url)}" target="_blank">${escapeHtml(keyword.url)}</a>` : '-'}
           </td>
-          <td>${keyword.priority}</td>
+          <td>
+            <input 
+              type="number" 
+              class="priority-input" 
+              value="${keyword.priority}" 
+              min="0"
+              onchange="updatePriority(${keyword.id}, this.value)"
+              onclick="this.select()"
+            >
+          </td>
           <td>
             <label class="toggle-switch">
               <input type="checkbox" ${keyword.is_active ? 'checked' : ''} 
-                     onchange="markAsModified(${keyword.id}, 'is_active', this.checked)">
+                     onchange="updateActiveStatus(${keyword.id}, this.checked)">
               <span class="slider"></span>
             </label>
           </td>
@@ -1063,21 +1089,23 @@
       });
     }
 
-    // 変更をマーク
-    function markAsModified(id, field, value) {
+    // 優先度を更新
+    function updatePriority(id, value) {
       const keyword = keywords.find(k => k.id === id);
       if (keyword) {
-        keyword[field] = value;
+        keyword.priority = parseInt(value);
         modifiedKeywords.add(id);
         updateStatusDisplay();
-        
-        // 検索クエリがあれば再適用、なければ通常のソート
-        const searchInput = document.getElementById('searchInput');
-        if (searchInput && searchInput.value.trim()) {
-          handleSearch();
-        } else {
-          applySorting();
-        }
+      }
+    }
+
+    // 有効状態を更新
+    function updateActiveStatus(id, value) {
+      const keyword = keywords.find(k => k.id === id);
+      if (keyword) {
+        keyword.is_active = value;
+        modifiedKeywords.add(id);
+        updateStatusDisplay();
       }
     }
 
@@ -1122,6 +1150,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               id: keyword.id,
+              priority: keyword.priority,
               is_active: keyword.is_active
             })
           });
