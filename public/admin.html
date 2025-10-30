@@ -155,21 +155,23 @@
       background: #c82333;
     }
 
-    /* 通知メッセージ（画面上部固定） */
+    /* 通知メッセージ（画面上部固定・幅調整） */
     .toast-message {
       position: fixed;
       top: 20px;
       left: 50%;
       transform: translateX(-50%);
-      padding: 14px 20px;
+      padding: 14px 32px;
       border-radius: 8px;
       font-size: 15px;
       font-weight: 500;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       z-index: 2000;
       animation: slideDown 0.3s ease-out;
-      min-width: 300px;
+      max-width: 400px;
+      width: auto;
       text-align: center;
+      white-space: nowrap;
     }
 
     .toast-message.success {
