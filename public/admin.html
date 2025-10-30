@@ -641,10 +641,8 @@
     // ========== 認証機能ここまで ==========
 
     let keywords = [];
-    let filteredKeywords = [];
     let modifiedKeywords = new Set();
     let currentSort = 'priority';
-    let searchQuery = '';
 
     // キーワード一覧を取得
     async function loadKeywords() {
@@ -663,10 +661,12 @@
         modifiedKeywords.clear();
         updateStatusDisplay();
         
-        // 検索クエリがあれば適用
-        if (searchQuery) {
+        // 検索クエリがあれば適用、なければ全表示
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput && searchInput.value.trim()) {
           handleSearch();
         } else {
+          document.getElementById('keywordsTable').style.display = 'table';
           applySorting();
         }
 
@@ -680,21 +680,21 @@
       }
     }
 
-    // 検索処理
+    // 検索処理（キーワードのみ対象）
     function handleSearch() {
       const searchInput = document.getElementById('searchInput');
       const clearBtn = document.getElementById('clearSearch');
       const searchIcon = document.getElementById('searchIcon');
       
-      searchQuery = searchInput.value.trim().toLowerCase();
+      const searchQuery = searchInput.value.trim().toLowerCase();
       
       if (searchQuery) {
         clearBtn.classList.add('show');
         searchIcon.style.display = 'none';
         
-        filteredKeywords = keywords.filter(keyword => 
-          keyword.keyword.toLowerCase().includes(searchQuery) ||
-          keyword.response_text.toLowerCase().includes(searchQuery)
+        // キーワードのみで検索
+        const filteredKeywords = keywords.filter(keyword => 
+          keyword.keyword.toLowerCase().includes(searchQuery)
         );
         
         if (filteredKeywords.length > 0) {
@@ -706,7 +706,12 @@
           document.getElementById('noResults').classList.add('show');
         }
       } else {
-        clearSearch();
+        // 検索バーが空の場合は全キーワード表示
+        clearBtn.classList.remove('show');
+        searchIcon.style.display = 'block';
+        document.getElementById('noResults').classList.remove('show');
+        document.getElementById('keywordsTable').style.display = 'table';
+        applySorting();
       }
     }
 
@@ -717,7 +722,6 @@
       const searchIcon = document.getElementById('searchIcon');
       
       searchInput.value = '';
-      searchQuery = '';
       clearBtn.classList.remove('show');
       searchIcon.style.display = 'block';
       
@@ -818,7 +822,10 @@
         keyword[field] = value;
         modifiedKeywords.add(id);
         updateStatusDisplay();
-        if (searchQuery) {
+        
+        // 検索クエリがあれば再適用、なければ通常のソート
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput && searchInput.value.trim()) {
           handleSearch();
         } else {
           applySorting();
@@ -877,7 +884,10 @@
         modifiedKeywords.clear();
         updateStatusDisplay();
         showToast('すべての変更を保存しました', 'success');
-        if (searchQuery) {
+        
+        // 検索クエリがあれば再適用、なければ通常のソート
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput && searchInput.value.trim()) {
           handleSearch();
         } else {
           applySorting();
@@ -964,7 +974,7 @@
 
         showToast(id ? '更新しました' : '追加しました', 'success');
         closeModal();
-        loadKeywords();
+        await loadKeywords();
       } catch (error) {
         console.error('Error:', error);
         showToast('エラー: ' + error.message, 'error');
@@ -985,7 +995,7 @@
         if (!response.ok) throw new Error('削除に失敗しました');
 
         showToast('削除しました', 'success');
-        loadKeywords();
+        await loadKeywords();
       } catch (error) {
         console.error('Error:', error);
         showToast('エラー: ' + error.message, 'error');
