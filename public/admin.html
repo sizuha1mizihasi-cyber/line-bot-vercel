@@ -204,6 +204,135 @@
       display: flex;
     }
 
+    /* フィルターコントロール（新規追加） */
+    .filter-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fafafa;
+      padding: 6px 12px;
+      border-radius: 10px;
+      border: 2px solid #e0e0e0;
+      transition: all 0.3s;
+    }
+
+    .filter-group:hover {
+      border-color: #06c755;
+      background: white;
+    }
+
+    .filter-group label {
+      font-size: 13px;
+      color: #666;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .filter-group select {
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      background: white;
+      color: #333;
+      transition: all 0.3s;
+      min-width: 120px;
+    }
+
+    .filter-group select:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.1);
+    }
+
+    /* アクティブフィルター表示 */
+    .active-filters {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      min-height: 32px;
+      align-items: center;
+    }
+
+    .filter-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, #06c755, #05b04b);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      animation: filterSlideIn 0.3s ease-out;
+    }
+
+    @keyframes filterSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .filter-tag .remove-filter {
+      background: rgba(255, 255, 255, 0.3);
+      border: none;
+      color: white;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .filter-tag .remove-filter:hover {
+      background: rgba(255, 255, 255, 0.5);
+      transform: scale(1.1);
+    }
+
+    .clear-all-filters {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: 500;
+    }
+
+    .clear-all-filters:hover {
+      background: #c82333;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+    }
+
+    .filter-count {
+      font-size: 13px;
+      color: #666;
+      font-weight: 500;
+      padding: 6px 12px;
+      background: #f0f0f0;
+      border-radius: 20px;
+    }
+
     /* 状態表示エリア */
     .status-display {
       display: flex;
@@ -719,6 +848,15 @@
         margin-left: 0;
         width: 100%;
       }
+
+      .filter-controls {
+        width: 100%;
+      }
+
+      .filter-group {
+        flex: 1;
+        min-width: 0;
+      }
     }
   </style>
 </head>
@@ -748,6 +886,37 @@
         <button class="clear-search" id="clearSearch" onclick="clearSearch()">×</button>
       </div>
       
+      <!-- フィルターコントロール（新規追加） -->
+      <div class="filter-controls">
+        <div class="filter-group">
+          <label for="statusFilter">状態:</label>
+          <select id="statusFilter" onchange="applyFilters()">
+            <option value="all">すべて</option>
+            <option value="active">有効のみ</option>
+            <option value="inactive">無効のみ</option>
+          </select>
+        </div>
+        
+        <div class="filter-group">
+          <label for="urlFilter">URL:</label>
+          <select id="urlFilter" onchange="applyFilters()">
+            <option value="all">すべて</option>
+            <option value="with-url">あり</option>
+            <option value="without-url">なし</option>
+          </select>
+        </div>
+        
+        <div class="filter-group">
+          <label for="priorityFilter">優先度:</label>
+          <select id="priorityFilter" onchange="applyFilters()">
+            <option value="all">すべて</option>
+            <option value="high">高 (10以上)</option>
+            <option value="medium">中 (5-9)</option>
+            <option value="low">低 (0-4)</option>
+          </select>
+        </div>
+      </div>
+      
       <!-- 状態表示エリア -->
       <div id="statusDisplay" class="status-display saved">
         <span id="statusText">✓ 最新の状態です</span>
@@ -763,6 +932,9 @@
         </select>
       </div>
     </div>
+
+    <!-- アクティブフィルター表示（新規追加） -->
+    <div id="activeFilters" class="active-filters"></div>
 
     <div id="loading" class="loading">読み込み中...</div>
     
@@ -908,6 +1080,14 @@
     let keywords = [];
     let modifiedKeywords = new Set();
     let currentSort = 'priority';
+    
+    // フィルター状態を保持
+    let currentFilters = {
+      search: '',
+      status: 'all',
+      url: 'all',
+      priority: 'all'
+    };
 
     // キーワード一覧を取得
     async function loadKeywords() {
@@ -926,14 +1106,8 @@
         modifiedKeywords.clear();
         updateStatusDisplay();
         
-        // 検索クエリがあれば適用、なければ全表示
-        const searchInput = document.getElementById('searchInput');
-        if (searchInput && searchInput.value.trim()) {
-          handleSearch();
-        } else {
-          document.getElementById('keywordsTable').style.display = 'table';
-          applySorting();
-        }
+        // フィルターを適用
+        applyFilters();
 
         document.getElementById('loading').style.display = 'none';
         
@@ -951,33 +1125,17 @@
       const clearBtn = document.getElementById('clearSearch');
       const searchIcon = document.getElementById('searchIcon');
       
-      const searchQuery = searchInput.value.trim().toLowerCase();
+      currentFilters.search = searchInput.value.trim().toLowerCase();
       
-      if (searchQuery) {
+      if (currentFilters.search) {
         clearBtn.classList.add('show');
         searchIcon.style.display = 'none';
-        
-        // キーワードのみで検索
-        const filteredKeywords = keywords.filter(keyword => 
-          keyword.keyword.toLowerCase().includes(searchQuery)
-        );
-        
-        if (filteredKeywords.length > 0) {
-          document.getElementById('noResults').classList.remove('show');
-          document.getElementById('keywordsTable').style.display = 'table';
-          applySorting(filteredKeywords);
-        } else {
-          document.getElementById('keywordsTable').style.display = 'none';
-          document.getElementById('noResults').classList.add('show');
-        }
       } else {
-        // 検索バーが空の場合は全キーワード表示
         clearBtn.classList.remove('show');
         searchIcon.style.display = 'block';
-        document.getElementById('noResults').classList.remove('show');
-        document.getElementById('keywordsTable').style.display = 'table';
-        applySorting();
       }
+      
+      applyFilters();
     }
 
     // 検索クリア
@@ -987,12 +1145,168 @@
       const searchIcon = document.getElementById('searchIcon');
       
       searchInput.value = '';
+      currentFilters.search = '';
       clearBtn.classList.remove('show');
       searchIcon.style.display = 'block';
       
-      document.getElementById('noResults').classList.remove('show');
-      document.getElementById('keywordsTable').style.display = 'table';
-      applySorting();
+      applyFilters();
+    }
+
+    // フィルターを適用
+    function applyFilters() {
+      // 現在のフィルター値を取得
+      currentFilters.status = document.getElementById('statusFilter').value;
+      currentFilters.url = document.getElementById('urlFilter').value;
+      currentFilters.priority = document.getElementById('priorityFilter').value;
+      
+      // フィルタリング処理
+      let filteredKeywords = keywords.filter(keyword => {
+        // 検索フィルター（キーワードのみ）
+        if (currentFilters.search && !keyword.keyword.toLowerCase().includes(currentFilters.search)) {
+          return false;
+        }
+        
+        // 状態フィルター
+        if (currentFilters.status === 'active' && !keyword.is_active) {
+          return false;
+        }
+        if (currentFilters.status === 'inactive' && keyword.is_active) {
+          return false;
+        }
+        
+        // URLフィルター
+        if (currentFilters.url === 'with-url' && !keyword.url) {
+          return false;
+        }
+        if (currentFilters.url === 'without-url' && keyword.url) {
+          return false;
+        }
+        
+        // 優先度フィルター
+        if (currentFilters.priority === 'high' && keyword.priority < 10) {
+          return false;
+        }
+        if (currentFilters.priority === 'medium' && (keyword.priority < 5 || keyword.priority >= 10)) {
+          return false;
+        }
+        if (currentFilters.priority === 'low' && keyword.priority >= 5) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      // アクティブフィルター表示を更新
+      updateActiveFiltersDisplay();
+      
+      // 結果表示
+      if (filteredKeywords.length > 0) {
+        document.getElementById('noResults').classList.remove('show');
+        document.getElementById('keywordsTable').style.display = 'table';
+        applySorting(filteredKeywords);
+      } else {
+        document.getElementById('keywordsTable').style.display = 'none';
+        document.getElementById('noResults').classList.add('show');
+      }
+    }
+
+    // アクティブフィルター表示を更新
+    function updateActiveFiltersDisplay() {
+      const activeFiltersContainer = document.getElementById('activeFilters');
+      activeFiltersContainer.innerHTML = '';
+      
+      let activeFilterCount = 0;
+      
+      // 検索フィルター
+      if (currentFilters.search) {
+        activeFilterCount++;
+        const tag = createFilterTag('検索', `"${currentFilters.search}"`, () => {
+          document.getElementById('searchInput').value = '';
+          clearSearch();
+        });
+        activeFiltersContainer.appendChild(tag);
+      }
+      
+      // 状態フィルター
+      if (currentFilters.status !== 'all') {
+        activeFilterCount++;
+        const statusText = currentFilters.status === 'active' ? '有効のみ' : '無効のみ';
+        const tag = createFilterTag('状態', statusText, () => {
+          document.getElementById('statusFilter').value = 'all';
+          applyFilters();
+        });
+        activeFiltersContainer.appendChild(tag);
+      }
+      
+      // URLフィルター
+      if (currentFilters.url !== 'all') {
+        activeFilterCount++;
+        const urlText = currentFilters.url === 'with-url' ? 'URLあり' : 'URLなし';
+        const tag = createFilterTag('URL', urlText, () => {
+          document.getElementById('urlFilter').value = 'all';
+          applyFilters();
+        });
+        activeFiltersContainer.appendChild(tag);
+      }
+      
+      // 優先度フィルター
+      if (currentFilters.priority !== 'all') {
+        activeFilterCount++;
+        const priorityText = {
+          'high': '高 (10以上)',
+          'medium': '中 (5-9)',
+          'low': '低 (0-4)'
+        }[currentFilters.priority];
+        const tag = createFilterTag('優先度', priorityText, () => {
+          document.getElementById('priorityFilter').value = 'all';
+          applyFilters();
+        });
+        activeFiltersContainer.appendChild(tag);
+      }
+      
+      // フィルター件数表示
+      if (activeFilterCount > 0) {
+        const countSpan = document.createElement('span');
+        countSpan.className = 'filter-count';
+        countSpan.textContent = `${activeFilterCount}件のフィルター適用中`;
+        activeFiltersContainer.appendChild(countSpan);
+        
+        // すべてクリアボタン
+        const clearAllBtn = document.createElement('button');
+        clearAllBtn.className = 'clear-all-filters';
+        clearAllBtn.textContent = 'すべてクリア';
+        clearAllBtn.onclick = clearAllFilters;
+        activeFiltersContainer.appendChild(clearAllBtn);
+      }
+    }
+
+    // フィルタータグを作成
+    function createFilterTag(label, value, onRemove) {
+      const tag = document.createElement('div');
+      tag.className = 'filter-tag';
+      tag.innerHTML = `
+        <span>${label}: ${value}</span>
+        <button class="remove-filter">×</button>
+      `;
+      tag.querySelector('.remove-filter').onclick = onRemove;
+      return tag;
+    }
+
+    // すべてのフィルターをクリア
+    function clearAllFilters() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('statusFilter').value = 'all';
+      document.getElementById('urlFilter').value = 'all';
+      document.getElementById('priorityFilter').value = 'all';
+      
+      currentFilters = {
+        search: '',
+        status: 'all',
+        url: 'all',
+        priority: 'all'
+      };
+      
+      clearSearch();
     }
 
     // ソートを適用
@@ -1186,13 +1500,8 @@
         updateStatusDisplay();
         showToast('すべての変更を保存しました', 'success');
         
-        // 検索クエリがあれば再適用、なければ通常のソート
-        const searchInput = document.getElementById('searchInput');
-        if (searchInput && searchInput.value.trim()) {
-          handleSearch();
-        } else {
-          applySorting();
-        }
+        // フィルターを再適用
+        applyFilters();
       } catch (error) {
         console.error('Error:', error);
         showToast('エラー: ' + error.message, 'error');
